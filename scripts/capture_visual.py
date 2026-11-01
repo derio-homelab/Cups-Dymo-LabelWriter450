@@ -133,7 +133,7 @@ def live_preview(browser, base):
     nudge_to_top(page, 0)
     add_text(page, 'Best before 2027', 9)
     before = data(page, 'd.rendered.image.length') + hash(data(page, 'd.rendered.image'))
-    cap.shot('preview-02-two-texts', ['two text blocks of different sizes', '11354 landscape frame'])
+    cap.shot('preview-02-two-texts', ['two text blocks of different sizes'])
     page.fill('[data-testid=p-text]', 'Best before 2028 - keep dry')
     settle(page)
     after = data(page, 'd.rendered.image.length') + hash(data(page, 'd.rendered.image'))

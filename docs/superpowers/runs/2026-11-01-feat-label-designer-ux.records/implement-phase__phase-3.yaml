@@ -21,7 +21,7 @@ visual:
     script: /Users/derio/.cache/fr/worktrees/python-Cups-Dymo-LabelWriter450/feat__label-designer-ux/scripts/capture_visual.py
     shots:
       - {path: /Users/derio/.cache/fr/worktrees/python-Cups-Dymo-LabelWriter450/feat__label-designer-ux/scripts/tmp/visual/preview-01-empty.png, shows: ["empty label"]}
-      - {path: /Users/derio/.cache/fr/worktrees/python-Cups-Dymo-LabelWriter450/feat__label-designer-ux/scripts/tmp/visual/preview-02-two-texts.png, shows: ["two text blocks of different sizes", "11354 landscape frame"]}
+      - {path: /Users/derio/.cache/fr/worktrees/python-Cups-Dymo-LabelWriter450/feat__label-designer-ux/scripts/tmp/visual/preview-02-two-texts.png, shows: ["two text blocks of different sizes"]}
       - {path: /Users/derio/.cache/fr/worktrees/python-Cups-Dymo-LabelWriter450/feat__label-designer-ux/scripts/tmp/visual/preview-03-type-updates.png, shows: ["type in a field and see the preview update"]}
       - {path: /Users/derio/.cache/fr/worktrees/python-Cups-Dymo-LabelWriter450/feat__label-designer-ux/scripts/tmp/visual/preview-04-image-selected.png, shows: ["image block selected with corner handle"]}
       - {path: /Users/derio/.cache/fr/worktrees/python-Cups-Dymo-LabelWriter450/feat__label-designer-ux/scripts/tmp/visual/preview-05-overflow.png, shows: ["overflowing block with error"]}
