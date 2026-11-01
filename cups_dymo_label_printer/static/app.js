@@ -271,9 +271,16 @@
             },
 
             addImage: function (src) {
+                var width = round2(Math.min(20, this.canvasW / 2));
+                var y = this.nextY();
+                if (y === null || y + width > this.canvasH - 1) {
+                    // no room below the other blocks: start at the top, small enough to stay on the label
+                    y = 2;
+                    width = round2(Math.max(MIN_IMAGE_MM, Math.min(width, this.canvasH - 4)));
+                }
                 var block = {
-                    type: 'image', id: this.nextId(), src: src, x_mm: 2, y_mm: this.nextY() === null ? 2 : this.nextY(),
-                    width_mm: round2(Math.min(20, this.canvasW / 2)), mono: 'threshold', threshold: 128
+                    type: 'image', id: this.nextId(), src: src, x_mm: 2, y_mm: y,
+                    width_mm: width, mono: 'threshold', threshold: 128
                 };
                 this.doc.blocks.push(block);
                 this.selected = block.id;

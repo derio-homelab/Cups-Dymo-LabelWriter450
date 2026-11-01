@@ -217,6 +217,8 @@ def live_preview(browser, base):
     # arrow-key nudge
     open_app(page, base, '11354', 'landscape')
     add_text(page, 'Nudge', 14)
+    page.fill('[data-testid=p-boxwidth]', '30')
+    page.press('[data-testid=p-boxwidth]', 'Tab')
     nudge_to_top(page, 0)
     x0 = data(page, 'd.doc.blocks[0].x_mm')
     overlay(page).focus()
