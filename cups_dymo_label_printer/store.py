@@ -31,6 +31,17 @@ log = logging.getLogger(__name__)
 VERSION = 2
 
 
+def _read_umask() -> int:
+    # os.umask can only be read by setting it; done once, at import, so no
+    # concurrent file creation ever sees the temporary 0.
+    current = os.umask(0o022)
+    os.umask(current)
+    return current
+
+
+_UMASK = _read_umask()
+
+
 class StoreError(Exception):
     """The history file could not be written (or read for a mutation)."""
 
@@ -242,8 +253,13 @@ class LabelStore:
     # --- persistence --------------------------------------------------------
 
     def _write_atomic(self, path: Path, payload: bytes) -> None:
+        try:
+            mode = os.stat(path).st_mode & 0o7777
+        except FileNotFoundError:
+            mode = 0o666 & ~_UMASK
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f'.{path.name}.', suffix='.tmp')
         try:
+            os.fchmod(fd, mode)  # mkstemp makes 0600; keep the target's mode
             with os.fdopen(fd, 'wb') as fh:
                 fh.write(payload)
                 fh.flush()

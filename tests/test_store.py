@@ -547,3 +547,26 @@ def test_editing_a_migrated_long_text_label_applies_the_caps_again(tmp_path):
     assert "migrated" not in updated
     with pytest.raises(ValueError):
         LabelDoc.from_json({**updated, "blocks": [{"type": "text", "text": "x" * 2500}]})
+
+
+# --- file mode (p2-r4) --------------------------------------------------------
+
+def _umask():
+    old = os.umask(0)
+    os.umask(old)
+    return old
+
+
+@pytest.mark.parametrize("mode", [0o644, 0o600, 0o664])
+def test_atomic_write_keeps_the_existing_mode(tmp_path, mode):
+    path = tmp_path / "saved_labels.json"
+    path.write_text("[]", encoding="utf-8")
+    os.chmod(path, mode)
+    LabelStore(path, now=Clock()).create(text_doc("x"))
+    assert (path.stat().st_mode & 0o777) == mode
+
+
+def test_a_new_file_gets_the_umask_default(tmp_path):
+    path = tmp_path / "saved_labels.json"
+    LabelStore(path, now=Clock()).create(text_doc("x"))
+    assert (path.stat().st_mode & 0o777) == 0o666 & ~_umask()
