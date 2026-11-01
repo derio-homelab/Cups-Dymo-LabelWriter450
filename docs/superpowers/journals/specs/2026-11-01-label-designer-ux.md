@@ -347,3 +347,8 @@ run_kind: none
 
 <!-- fr:journal kind=decision scope=spec id=tier-2026-11-01-label-designer-ux-p2 created=2026-11-01T18:51:46+00:00 -->
 ### tier-2026-11-01-label-designer-ux-p2 · decision · hard: phase 2 migrates the only persistent user data (saved_labels.json v1 to v2) and changes the print/save path every print relies on
+
+<!-- fr:journal kind=finding scope=spec id=sr-14-resolved-2 created=2026-11-01T22:24:29+00:00 state=open resolves=sr-14 tracked_by=https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/4 -->
+### sr-14-resolved-2 · finding [deferred → https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/4] · resolves sr-14: No volume for saved_labels.json/images; rebuild-redeploy drops history
+
+Filed at deliver as https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/4.
