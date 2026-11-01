@@ -13,6 +13,7 @@ rolls the in-memory state back. One lock serialises every read and mutation.
 import copy
 import json
 import logging
+import math
 import os
 import tempfile
 import threading
@@ -21,8 +22,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from .config import DEFAULT_FONT_SIZE
-from .document import LabelDoc, TextBlock, content_key, from_flat, pt_to_px
+from .config import DEFAULT_FONT_BOLD, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_LABEL_SIZE, LABEL_SIZES
+from .document import (ALIGNMENTS, LabelDoc, TextBlock, content_key, default_orientation,
+                       font_cap_pt, pt_to_px, px_to_pt)
 
 log = logging.getLogger(__name__)
 
@@ -68,11 +70,45 @@ def _named(doc: LabelDoc) -> LabelDoc:
     return doc
 
 
+def _v1_number(value, default, minimum):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    if not math.isfinite(value) or value < minimum:
+        return default
+    return value
+
+
 def _migrate_v1_entry(entry: dict) -> dict:
-    flat = dict(entry)
-    if flat.get('align') not in ('left', 'center', 'right'):
-        flat['align'] = 'center'  # v1 drew unknown alignments centred
-    return _entry(str(entry.get('id') or uuid.uuid4()), _named(from_flat(flat)), None)
+    """Lenient v1 -> v2: anything v1 could have saved is kept, defaulted or clamped."""
+    if not isinstance(entry, dict):
+        raise ValueError('v1 entry must be an object')
+    label_size = entry.get('label_size')
+    if label_size not in LABEL_SIZES:
+        label_size = DEFAULT_LABEL_SIZE
+    font_px = _v1_number(entry.get('font_size'), DEFAULT_FONT_SIZE, 1e-9)
+    text = entry.get('text')
+    text = '' if text is None else str(text)
+    align = entry.get('align')
+    block = TextBlock(
+        id='b1', text=text,
+        align=align if align in ALIGNMENTS else 'center',  # v1 drew unknown alignments centred
+        font_family=DEFAULT_FONT_FAMILY,
+        font_size_pt=min(px_to_pt(font_px), font_cap_pt(label_size)),
+        bold=DEFAULT_FONT_BOLD,
+    )
+    copies = _v1_number(entry.get('copies'), 1, 1)
+    doc = LabelDoc(label_size=label_size, orientation=default_orientation(label_size),
+                   copies=int(copies), blocks=[block])
+    label_id = entry.get('id')
+    result = _entry(str(label_id) if label_id not in (None, '') else str(uuid.uuid4()),
+                    _named(doc), None)
+    result['migrated'] = True
+    return result
+
+
+def doc_of(label: dict) -> LabelDoc:
+    """The document of a stored label (migrated v1 text is exempt from the text caps)."""
+    return LabelDoc.from_json(label, text_caps=not label.get('migrated', False))
 
 
 def _entry(label_id: str, doc: LabelDoc, stamp: Optional[str]) -> dict:
@@ -95,8 +131,10 @@ def _entry(label_id: str, doc: LabelDoc, stamp: Optional[str]) -> dict:
 def _validated_v2_entry(raw: dict) -> dict:
     if not isinstance(raw, dict) or not isinstance(raw.get('id'), str) or not raw['id']:
         raise ValueError('label needs an id')
-    doc = LabelDoc.from_json(raw)
+    doc = doc_of(raw)
     entry = _entry(raw['id'], doc, None)
+    if raw.get('migrated') is True:
+        entry['migrated'] = True
     for key in ('created_at', 'updated_at', 'last_printed_at'):
         value = raw.get(key)
         if value is not None:
@@ -173,7 +211,7 @@ class LabelStore:
             self._corrupt_bytes = raw
             return
         if isinstance(data, list):
-            self._labels = self._load_entries(data, _migrate_v1_entry, raw)
+            self._labels = self._load_entries(data, _migrate_v1_entry, raw, mint_duplicates=True)
             self._v1_bytes = raw
             self._corrupt_bytes = None  # the v1 backup already keeps everything
         elif (isinstance(data, dict) and data.get('version') == VERSION
@@ -183,13 +221,16 @@ class LabelStore:
             log.error('label history %s has an unknown shape; loading empty', self._path)
             self._corrupt_bytes = raw
 
-    def _load_entries(self, items: list, convert, raw: bytes) -> list:
+    def _load_entries(self, items: list, convert, raw: bytes,
+                      mint_duplicates: bool = False) -> list:
         labels, seen = [], set()
         for item in items:
             try:
                 entry = convert(item)
                 if entry['id'] in seen:
-                    raise ValueError(f"duplicate id {entry['id']}")
+                    if not mint_duplicates:
+                        raise ValueError(f"duplicate id {entry['id']}")
+                    entry['id'] = str(uuid.uuid4())
             except (ValueError, TypeError, AttributeError) as e:
                 log.warning('skipping unreadable saved label in %s: %s', self._path, e)
                 self._corrupt_bytes = raw
@@ -284,7 +325,7 @@ class LabelStore:
 
     def _content_match(self, key: str) -> Optional[dict]:
         for entry in self._labels:
-            if content_key(LabelDoc.from_json(entry)) == key:
+            if content_key(doc_of(entry)) == key:
                 return entry
         return None
 
@@ -305,6 +346,7 @@ class LabelStore:
         def change():
             entry = self._find(label_id)
             entry.update({k: v for k, v in _named(doc).to_json().items() if k in DESIGN_FIELDS})
+            entry.pop('migrated', None)  # the new design passed the normal caps
             entry['updated_at'] = _iso(self._now())
             return entry
         return self._mutate(change)

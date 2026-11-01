@@ -276,3 +276,15 @@ def test_memory_serves_a_migrated_v1_file(monkeypatch, tmp_path):
     assert [(m["id"], m["text"], m["font_size"], m["align"]) for m in memory] == [
         (e["id"], e["text"], e["font_size"], e["align"]) for e in original]
     fonts.reset_cache()
+
+
+def test_migrated_over_cap_label_reprints_and_thumbnails(monkeypatch, tmp_path):
+    entry = {"id": "long", "text": "x" * 2500, "label_size": "11354", "font_size": 40,
+             "align": "center", "copies": 1}
+    (tmp_path / "saved_labels.json").write_text(json.dumps([entry]), encoding="utf-8")
+    c, web_app = _load(monkeypatch, tmp_path)
+    assert c.get("/labels/long/thumbnail.png").status_code == 200
+    resp = c.post("/labels/long/print", json={})
+    assert resp.status_code == 200, resp.get_json()
+    assert resp.get_json()["label"]["print_count"] == 1
+    fonts.reset_cache()

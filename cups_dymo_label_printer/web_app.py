@@ -17,7 +17,7 @@ from . import fonts, images
 from .document import LabelDoc, TextBlock, ImageBlock, canvas_mm, from_flat
 from .label_generator import render
 from .printer_service import PrinterService
-from .store import DEFAULT_SORT, LabelNotFound, LabelStore, StoreError, flat_fields
+from .store import DEFAULT_SORT, LabelNotFound, LabelStore, StoreError, doc_of, flat_fields
 
 
 UPLOAD_OVERHEAD_BYTES = 64 * 1024  # multipart framing on top of the file itself
@@ -338,7 +338,7 @@ def star_label(label_id: str):
 def reprint_label(label_id: str):
     """Re-print a saved label as stored (optionally with other ``copies``) and bump it."""
     saved = store.get(label_id)
-    doc = LabelDoc.from_json(saved)
+    doc = doc_of(saved)
     data = request.get_json(silent=True) or {}
     try:
         doc.copies = int(data.get('copies', doc.copies))
@@ -351,7 +351,7 @@ def reprint_label(label_id: str):
 @_label_route
 def label_thumbnail(label_id: str):
     """The renderer's output at 100 DPI; a missing image is simply absent (R13)."""
-    image = render(LabelDoc.from_json(store.get(label_id)), dpi=THUMBNAIL_DPI).image
+    image = render(doc_of(store.get(label_id)), dpi=THUMBNAIL_DPI).image
     buffered = BytesIO()
     image.save(buffered, format='PNG')
     buffered.seek(0)

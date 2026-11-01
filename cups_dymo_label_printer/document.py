@@ -75,7 +75,9 @@ class TextBlock:
     shrink_to_fit: bool = False
     type: str = field(default='text', init=False)
 
-    def validate(self) -> None:
+    def validate(self, text_caps: bool = True) -> None:
+        """``text_caps=False`` exempts migrated v1 text from the length caps (render
+        stays bounded by the raster budget)."""
         _check_types(self, bools=('bold', 'italic', 'underline', 'shrink_to_fit'),
                      strs=('id', 'font_family'))
         if self.align not in ALIGNMENTS:
@@ -86,9 +88,9 @@ class TextBlock:
         _number(self.width_mm, 'width_mm', positive=True, nullable=True)
         if not isinstance(self.text, str):
             raise ValueError("text must be a string")
-        if len(self.text) > MAX_TEXT_CHARS:
+        if text_caps and len(self.text) > MAX_TEXT_CHARS:
             raise ValueError(f"text must not exceed {MAX_TEXT_CHARS} characters")
-        if self.text.count('\n') + 1 > MAX_TEXT_LINES:
+        if text_caps and self.text.count('\n') + 1 > MAX_TEXT_LINES:
             raise ValueError(f"text must not exceed {MAX_TEXT_LINES} lines")
 
     def to_json(self) -> dict:
@@ -113,7 +115,7 @@ class ImageBlock:
     threshold: int = DEFAULT_THRESHOLD
     type: str = field(default='image', init=False)
 
-    def validate(self) -> None:
+    def validate(self, text_caps: bool = True) -> None:
         _check_types(self, bools=(), strs=('id',))
         if not isinstance(self.src, str) or not self.src:
             raise ValueError("image src is required")
@@ -138,6 +140,12 @@ Block = Union[TextBlock, ImageBlock]
 _BLOCK_TYPES = {'text': TextBlock, 'image': ImageBlock}
 
 
+def font_cap_pt(label_size: str) -> float:
+    """The largest font size a stock allows: its long edge, in points."""
+    size = LABEL_SIZES[label_size]
+    return max(size['width_mm'], size['height_mm']) * 72 / 25.4
+
+
 def _check_font_cap(block: Block, long_edge_mm: float) -> None:
     if isinstance(block, TextBlock) and block.font_size_pt > long_edge_mm * 72 / 25.4:
         raise ValueError("font_size_pt must not exceed the label's long edge")
@@ -148,7 +156,7 @@ def default_orientation(label_size: str) -> str:
     return 'portrait' if size['width_mm'] <= size['height_mm'] else 'landscape'
 
 
-def _block_from_json(raw: Any, index: int) -> Block:
+def _block_from_json(raw: Any, index: int, text_caps: bool = True) -> Block:
     if not isinstance(raw, dict):
         raise ValueError("block must be an object")
     kind = raw.get('type')
@@ -159,7 +167,7 @@ def _block_from_json(raw: Any, index: int) -> Block:
     block = cls(**{k: v for k, v in raw.items() if k in names})
     if block.id is None or block.id == "":
         block.id = f"b{index + 1}"
-    block.validate()
+    block.validate(text_caps)
     return block
 
 
@@ -172,7 +180,7 @@ class LabelDoc:
     blocks: list = field(default_factory=list)
 
     @classmethod
-    def from_json(cls, raw: Any) -> 'LabelDoc':
+    def from_json(cls, raw: Any, text_caps: bool = True) -> 'LabelDoc':
         if not isinstance(raw, dict):
             raise ValueError("document must be an object")
         label_size = raw.get('label_size', DEFAULT_LABEL_SIZE)
@@ -195,7 +203,7 @@ class LabelDoc:
             orientation=orientation,
             copies=copies,
             name=str(raw.get('name') or ''),
-            blocks=[_block_from_json(b, i) for i, b in enumerate(blocks)],
+            blocks=[_block_from_json(b, i, text_caps) for i, b in enumerate(blocks)],
         )
         long_edge = max(LABEL_SIZES[label_size]['width_mm'], LABEL_SIZES[label_size]['height_mm'])
         for block in doc.blocks:

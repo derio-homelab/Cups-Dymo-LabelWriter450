@@ -454,3 +454,96 @@ def test_record_print_create_rolls_back_on_failure(store, monkeypatch):
     with pytest.raises(StoreError):
         store.record_print(text_doc("New"))
     assert store.list() == []
+
+
+# --- lenient v1 migration (p2-r1): nothing v1 could hold is dropped ---------
+
+def _v1_entry(**fields):
+    base = {"id": "e1", "text": "Hello", "label_size": "11354", "font_size": 40,
+            "align": "center", "copies": 1}
+    base.update(fields)
+    return {k: v for k, v in base.items() if v is not _MISSING}
+
+
+_MISSING = object()
+_CAP_11354_PT = 57 * 72 / 25.4  # the 11354 stock's long edge in points
+
+
+@pytest.mark.parametrize("fields,check", [
+    ({"label_size": "BAD"}, lambda l: l["label_size"] == "11354"),
+    ({"label_size": _MISSING}, lambda l: l["label_size"] == "11354"),
+    ({"label_size": None}, lambda l: l["label_size"] == "11354"),
+    ({"font_size": _MISSING}, lambda l: l["blocks"][0]["font_size_pt"] == 40 * 72 / 300),
+    ({"font_size": None}, lambda l: l["blocks"][0]["font_size_pt"] == 40 * 72 / 300),
+    ({"font_size": 0}, lambda l: l["blocks"][0]["font_size_pt"] == 40 * 72 / 300),
+    ({"font_size": -5}, lambda l: l["blocks"][0]["font_size_pt"] == 40 * 72 / 300),
+    ({"font_size": "big"}, lambda l: l["blocks"][0]["font_size_pt"] == 40 * 72 / 300),
+    ({"font_size": True}, lambda l: l["blocks"][0]["font_size_pt"] == 40 * 72 / 300),
+    ({"font_size": 100000}, lambda l: l["blocks"][0]["font_size_pt"] == _CAP_11354_PT),
+    ({"copies": _MISSING}, lambda l: l["copies"] == 1),
+    ({"copies": None}, lambda l: l["copies"] == 1),
+    ({"copies": "x"}, lambda l: l["copies"] == 1),
+    ({"copies": 0}, lambda l: l["copies"] == 1),
+    ({"copies": 3}, lambda l: l["copies"] == 3),
+    ({"text": None}, lambda l: l["blocks"][0]["text"] == ""),
+    ({"text": _MISSING}, lambda l: l["blocks"][0]["text"] == ""),
+    ({"align": "justify"}, lambda l: l["blocks"][0]["align"] == "center"),
+    ({"align": None}, lambda l: l["blocks"][0]["align"] == "center"),
+    ({"text": "x" * 2500}, lambda l: l["blocks"][0]["text"] == "x" * 2500),
+    ({"text": "\n".join(["l"] * 80)}, lambda l: l["blocks"][0]["text"].count("\n") == 79),
+    ({"id": _MISSING}, lambda l: l["id"]),
+    ({"id": None}, lambda l: l["id"]),
+])
+def test_v1_entry_that_v1_could_hold_is_kept(tmp_path, fields, check):
+    path = tmp_path / "saved_labels.json"
+    path.write_text(json.dumps([_v1_entry(**fields)]), encoding="utf-8")
+    store = LabelStore(path, now=Clock())
+    [label] = store.list()
+    assert check(label)
+
+    # it survives a persist + reload, and stays renderable / printable
+    store.set_star(label["id"], True)
+    [again] = LabelStore(path).list()
+    assert check(again)
+    from cups_dymo_label_printer.label_generator import render
+    render(store_mod.doc_of(again))
+    assert not list(tmp_path.glob("saved_labels.corrupt*.json"))
+
+
+def test_v1_duplicate_ids_get_a_new_id_instead_of_being_dropped(tmp_path):
+    path = tmp_path / "saved_labels.json"
+    path.write_text(json.dumps([_v1_entry(id="same", text="A"),
+                                _v1_entry(id="same", text="B")]), encoding="utf-8")
+    labels = LabelStore(path).list()
+    assert [l["blocks"][0]["text"] for l in labels] == ["A", "B"]
+    assert labels[0]["id"] == "same" and labels[1]["id"] not in ("same", "")
+
+
+def test_v1_non_dict_item_is_the_only_thing_skipped(tmp_path):
+    path = tmp_path / "saved_labels.json"
+    raw = json.dumps([_v1_entry(), "junk", 7, None])
+    path.write_text(raw, encoding="utf-8")
+    store = LabelStore(path, now=Clock())
+    assert [l["id"] for l in store.list()] == ["e1"]
+    store.create(text_doc("x"))
+    assert (tmp_path / "saved_labels.v1.json").read_text(encoding="utf-8") == raw
+
+
+def test_v1_empty_list_migrates_to_an_empty_v2_file(tmp_path):
+    path = tmp_path / "saved_labels.json"
+    path.write_text("[]", encoding="utf-8")
+    store = LabelStore(path, now=Clock())
+    assert store.list() == []
+    store.create(text_doc("x"))
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == 2
+    assert (tmp_path / "saved_labels.v1.json").read_text(encoding="utf-8") == "[]"
+
+
+def test_editing_a_migrated_long_text_label_applies_the_caps_again(tmp_path):
+    path = tmp_path / "saved_labels.json"
+    path.write_text(json.dumps([_v1_entry(text="x" * 2500)]), encoding="utf-8")
+    store = LabelStore(path, now=Clock())
+    updated = store.update("e1", text_doc("short"))
+    assert "migrated" not in updated
+    with pytest.raises(ValueError):
+        LabelDoc.from_json({**updated, "blocks": [{"type": "text", "text": "x" * 2500}]})
