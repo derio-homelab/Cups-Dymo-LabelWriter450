@@ -1,0 +1,30 @@
+schema_version: 10
+run: 2026-11-01-feat-label-designer-ux
+step: review-phase
+item: phase/1
+outcome: done
+journal:
+  - {kind: review, id: p1-review-r1, phase: 1, title: "Phase 1 code review: 10 findings (9 in, 1 out)", body: "A dispatched general-purpose reviewer (superpowers:requesting-code-review template) reviewed bb908be..39ba726 against the spec and plan phase 1, ran the suite (137 passed) and probe scripts. Findings raised: p1-r1 to p1-r9 (in), p1-r10 (out). The orchestrator verified each against the code (receiving-code-review), and the implementer fixed p1-r1 to p1-r9 in 90e4d46, e9f8fe7 and 21395e8, each with a test; the suite is 173 passed."}
+  - {kind: finding, id: p1-r1, phase: 1, review_scope: in, title: "Text rasterization still a render DoS; only the global MAX_IMAGE_PIXELS blocked huge lines (as a 500)", body: "label_generator.py _draw_text rasterized every line at full size. Fix: skip off-canvas lines, per-block raster budget leading to overflow; the bomb guard is scoped to image decode."}
+  - {kind: finding, id: p1-r2, phase: 1, review_scope: in, title: "Overflow ignored horizontal off-canvas extent", body: "label_generator.py:89-94. Fix: check the line x extent; width_mm=None = canvas − x − margin."}
+  - {kind: finding, id: p1-r3, phase: 1, review_scope: in, title: "Validation accepted inf/nan/huge coords and wrong types (500s)", body: "document.py _number. Fix: isfinite, coordinate bounds, type checks; 400."}
+  - {kind: finding, id: p1-r4, phase: 1, review_scope: in, title: "Image blocks never reported overflow", body: "label_generator.py:138. Fix: compare the pasted box with the canvas."}
+  - {kind: finding, id: p1-r5, phase: 1, review_scope: in, title: "Malformed SVG accepted at upload", body: "images.py store_upload only sniffed. Fix: probe-rasterize at upload."}
+  - {kind: finding, id: p1-r6, phase: 1, review_scope: in, title: "Raster uploads fully decoded and RGBA-converted before downscale", body: "images.py:173-181. Fix: draft()/reduce before convert."}
+  - {kind: finding, id: p1-r7, phase: 1, review_scope: in, title: "open_font reloaded the TTF on every layout", body: "fonts.py:148. Fix: lru_cache."}
+  - {kind: finding, id: p1-r8, phase: 1, review_scope: in, title: "Compat routes changed behaviour undocumented (unknown align, whitespace-only text → 400)", body: "Kept the stricter behaviour; documented in the spec's rewrite table."}
+  - {kind: finding, id: p1-r9, phase: 1, review_scope: in, title: "Tests workflow installed unpinned deps", body: ".github/workflows/Tests.yaml. Fix: pin to the pyproject constraints."}
+  - {kind: finding, id: p1-r10, phase: 1, review_scope: out, title: "copies unbounded (negative/zero/huge) passed to CUPS", body: "Pre-existing: v1 /print did int(data.get('copies', 1)) with no bounds (web_app.py at bb908be)."}
+resolves:
+  - {id: p1-r1, state: fixed, body: "90e4d46 — test_hostile_doc_renders_fast_without_exceptions, test_offcanvas_lines_are_skipped, test_hostile_text_doc_never_500, test_pillow_global_bomb_limit_is_not_changed."}
+  - {id: p1-r2, state: fixed, body: "90e4d46 — test_horizontal_extent_flags_overflow[50/-30], test_centered_block_straddling_left_edge_overflows, test_default_width_is_canvas_minus_x_minus_margin."}
+  - {id: p1-r3, state: fixed, body: "90e4d46 — test_non_finite_out_of_range_and_wrong_types_rejected, test_render_rejects_hostile_numbers_with_400, test_render_rejects_wrong_types_with_400."}
+  - {id: p1-r4, state: fixed, body: "90e4d46 — test_image_leaving_canvas_overflows."}
+  - {id: p1-r5, state: fixed, body: "90e4d46 — test_junk_svg_upload_refused."}
+  - {id: p1-r6, state: fixed, body: "90e4d46 — test_raster_is_downscaled_before_rgba_convert, test_jpeg_uses_draft_mode."}
+  - {id: p1-r7, state: fixed, body: "90e4d46 — test_opened_fonts_are_cached."}
+  - {id: p1-r8, state: fixed, body: "e9f8fe7 — both rows added to the spec's deliberate-rewrite table."}
+  - {id: p1-r9, state: fixed, body: "21395e8 — pinned pip install; suite passes on the pinned versions locally (Python 3.12)."}
+  - {id: p1-r10, state: out-of-scope, body: "Not caused by this change: the v1 /print already passed int(copies) to CUPS unbounded. Note: document.py now rejects non-integer copies (test_bad_copies_rejected) but the range bound remains a follow-up."}
+  - {id: p1-f5, state: fixed, body: "The executor tagged this out of scope, but the failing markdown (spec, journals, acceptance report) was added by this branch, so this change caused it. Fixed in 597bfd0 (.markdownlintignore for fr-generated markdown, spec lint fixes); markdownlint-cli 0.50.0 is clean."}
+evidence: {review: p1-review-r1, reviewer: ab765d425d1b232bc, model: claude-opus-5-5}
