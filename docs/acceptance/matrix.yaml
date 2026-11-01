@@ -43,9 +43,14 @@ rows:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R2
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R3
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R4
-    levels: {}
-    status: not-implemented
-    notes: ''
+    levels:
+      unit:
+      - Cups-Dymo-LabelWriter450:tests/test_fonts.py
+      - Cups-Dymo-LabelWriter450:tests/test_render.py
+      api:
+      - Cups-Dymo-LabelWriter450:tests/test_routes_render.py
+    status: ci
+    notes: backend covered by pytest (fonts, renderer, /fonts, /render)
   - id: ldx-images
     capability: label-images
     acceptance: A label shows an uploaded PNG/JPEG/SVG or a built-in icon, positioned
