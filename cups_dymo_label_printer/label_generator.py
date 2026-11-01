@@ -11,7 +11,7 @@ from typing import Literal
 
 from PIL import Image, ImageDraw
 
-from . import fonts
+from . import fonts, images
 from .config import DEFAULT_DPI, DEFAULT_FONT_SIZE, DEFAULT_LABEL_SIZE
 from .document import (
     DEFAULT_MARGIN_MM,
@@ -118,6 +118,24 @@ def _bbox_mm(box: tuple, dpi: int) -> list:
     return [round(v * 25.4 / dpi, 3) for v in box]
 
 
+def _draw_image(canvas: Image.Image, block: ImageBlock, dpi: int) -> dict:
+    width_px = max(1, round(_mm_to_px(block.width_mm, dpi)))
+    result = {
+        'id': block.id, 'overflow': False, 'font_substituted': False, 'missing': False,
+        'bbox_mm': [block.x_mm, block.y_mm, block.width_mm, block.width_mm],
+    }
+    try:
+        mono = images.load_mono(block.src, width_px, block.mono, block.threshold)
+    except images.ImageMissing:
+        result['missing'] = True
+        return result
+    canvas.paste(mono.convert('L'), (round(_mm_to_px(block.x_mm, dpi)),
+                                     round(_mm_to_px(block.y_mm, dpi))))
+    result['bbox_mm'] = _bbox_mm((_mm_to_px(block.x_mm, dpi), _mm_to_px(block.y_mm, dpi),
+                                  mono.width, mono.height), dpi)
+    return result
+
+
 def render(doc: LabelDoc, dpi: int = DEFAULT_DPI) -> RenderResult:
     """Render a document to a mode-``1`` image and per-block layout results."""
     width_mm, height_mm = canvas_mm(doc)
@@ -139,13 +157,7 @@ def render(doc: LabelDoc, dpi: int = DEFAULT_DPI) -> RenderResult:
                 'size_pt': layout.size_pt,
             })
         elif isinstance(block, ImageBlock):
-            results.append({
-                'id': block.id,
-                'bbox_mm': [block.x_mm, block.y_mm, block.width_mm, 0],
-                'overflow': False,
-                'font_substituted': False,
-                'missing': True,
-            })
+            results.append(_draw_image(canvas, block, dpi))
 
     mono = canvas.point(lambda p: 255 if p >= TEXT_THRESHOLD else 0).convert('1')
     return RenderResult(mono, results)

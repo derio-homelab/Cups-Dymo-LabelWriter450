@@ -128,3 +128,23 @@ def test_create_label_image_wrapper_contract():
     assert image.getpixel((0, 0)) == (255, 255, 255)
     assert sum(image.convert("L").histogram()[1:255]) == 0
     assert image.size == (int(57 * 300 / 25.4), int(32 * 300 / 25.4))
+
+
+def test_icon_block_is_drawn_pure_mono():
+    img_block = {"type": "image", "id": "i", "src": "icon:star", "x_mm": 5, "y_mm": 5, "width_mm": 15}
+    result = render(doc_of(img_block))
+    assert result.image.mode == "1"
+    assert dark(result.image) > 100
+    info = result.blocks[0]
+    assert info["missing"] is False
+    assert info["bbox_mm"][:3] == [5, 5, 15]
+    assert info["bbox_mm"][3] == pytest.approx(15, abs=0.1)
+
+
+def test_missing_image_draws_nothing_and_is_flagged(monkeypatch, tmp_path):
+    monkeypatch.setenv("LABEL_IMAGE_DIR", str(tmp_path))
+    gone = {"type": "image", "id": "i", "src": "upload:" + "a" * 64 + ".png",
+            "x_mm": 5, "y_mm": 5, "width_mm": 15}
+    result = render(doc_of(gone))
+    assert result.blocks[0]["missing"] is True
+    assert dark(result.image) == 0
