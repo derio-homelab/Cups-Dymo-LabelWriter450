@@ -303,3 +303,58 @@ def test_a_non_object_body_is_400_json(client, method, path):
     assert resp.status_code == 400
     assert resp.get_json()["success"] is False
     assert web_app.store.list() == [label] and web_app.printer_service.calls == []
+
+
+# --- thumbnail caching (p2-r3) ------------------------------------------------
+
+def test_versioned_thumbnail_is_immutable(client):
+    c, _ = client
+    label = create(c, "Thumb")
+    resp = c.get(f"/labels/{label['id']}/thumbnail.png?v=abc")
+    cache = resp.headers["Cache-Control"]
+    assert "public" in cache and "max-age=31536000" in cache and "immutable" in cache
+
+
+def test_unversioned_thumbnail_revalidates_by_etag(client):
+    c, _ = client
+    label = create(c, "Thumb")
+    url = f"/labels/{label['id']}/thumbnail.png"
+    first = c.get(url)
+    etag = first.headers["ETag"]
+    assert first.status_code == 200 and "immutable" not in first.headers.get("Cache-Control", "")
+
+    again = c.get(url, headers={"If-None-Match": etag})
+    assert again.status_code == 304 and again.data == b""
+
+    c.put(f"/labels/{label['id']}", json={"doc": doc("Changed")})
+    changed = c.get(url, headers={"If-None-Match": etag})
+    assert changed.status_code == 200 and changed.headers["ETag"] != etag
+
+
+def test_thumbnail_renders_once_per_version(client, monkeypatch):
+    c, web_app = client
+    calls = []
+    real = web_app.render
+
+    def counting(*args, **kwargs):
+        calls.append(kwargs.get("dpi"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(web_app, "render", counting)
+    label = create(c, "Thumb")
+    url = f"/labels/{label['id']}/thumbnail.png"
+    first = c.get(url).data
+    assert c.get(url).data == first
+    assert len(calls) == 1
+
+    c.put(f"/labels/{label['id']}", json={"doc": doc("Changed")})
+    c.get(url)
+    assert len(calls) == 2
+
+
+def test_thumbnail_cache_is_bounded(client, monkeypatch):
+    c, web_app = client
+    monkeypatch.setattr(web_app, "THUMBNAIL_CACHE_SIZE", 2)
+    for text in ("a", "b", "c"):
+        c.get(f"/labels/{create(c, text)['id']}/thumbnail.png")
+    assert len(web_app._THUMBNAILS) == 2

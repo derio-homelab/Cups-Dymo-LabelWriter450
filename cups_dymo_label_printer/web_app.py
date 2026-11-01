@@ -4,17 +4,20 @@ Flask web application for Dymo label printing.
 Provides a web interface for designing and printing labels.
 """
 
+from collections import OrderedDict
 from io import BytesIO
 import base64
+import hashlib
 import logging
 import os
+import threading
 from typing import Optional
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, Response, render_template, request, jsonify, send_file
 
 from .config import LABEL_SIZES
 from . import fonts, images
-from .document import LabelDoc, TextBlock, ImageBlock, canvas_mm, from_flat
+from .document import LabelDoc, TextBlock, ImageBlock, canvas_mm, content_key, from_flat
 from .label_generator import render
 from .printer_service import PrinterService
 from .store import DEFAULT_SORT, LabelNotFound, LabelStore, StoreError, doc_of, flat_fields
@@ -360,12 +363,45 @@ def reprint_label(label_id: str):
 @app.route('/labels/<label_id>/thumbnail.png', methods=['GET'])
 @_label_route
 def label_thumbnail(label_id: str):
-    """The renderer's output at 100 DPI; a missing image is simply absent (R13)."""
-    image = render(doc_of(store.get(label_id)), dpi=THUMBNAIL_DPI).image
+    """The renderer's output at 100 DPI; a missing image is simply absent (R13).
+
+    ``?v=`` marks a versioned URL, cached for good; otherwise the client
+    revalidates with an ETag of (id, updated_at, content key) - the content key
+    guards two edits within one timestamp tick. Renders are memoised on the same key.
+    """
+    label = store.get(label_id)
+    doc = doc_of(label)
+    key = (label['id'], label['updated_at'], content_key(doc))
+    etag = hashlib.sha256('\0'.join(map(str, key)).encode()).hexdigest()[:32]
+    if 'v' not in request.args and request.if_none_match.contains(etag):
+        response = Response(status=304)
+    else:
+        response = Response(_thumbnail_png(key, doc), mimetype='image/png')
+    response.set_etag(etag)
+    response.headers['Cache-Control'] = (
+        'public, max-age=31536000, immutable' if 'v' in request.args else 'no-cache')
+    return response
+
+
+_THUMBNAILS: 'OrderedDict[tuple, bytes]' = OrderedDict()
+_THUMBNAILS_LOCK = threading.Lock()
+THUMBNAIL_CACHE_SIZE = 128
+
+
+def _thumbnail_png(key: tuple, doc: LabelDoc) -> bytes:
+    """LRU (``THUMBNAIL_CACHE_SIZE`` entries) of rendered thumbnail PNGs."""
+    with _THUMBNAILS_LOCK:
+        if key in _THUMBNAILS:
+            _THUMBNAILS.move_to_end(key)
+            return _THUMBNAILS[key]
     buffered = BytesIO()
-    image.save(buffered, format='PNG')
-    buffered.seek(0)
-    return send_file(buffered, mimetype='image/png')
+    render(doc, dpi=THUMBNAIL_DPI).image.save(buffered, format='PNG')
+    png = buffered.getvalue()
+    with _THUMBNAILS_LOCK:
+        _THUMBNAILS[key] = png
+        while len(_THUMBNAILS) > THUMBNAIL_CACHE_SIZE:
+            _THUMBNAILS.popitem(last=False)
+    return png
 
 
 def run_app(host: str = '0.0.0.0', port: int = 5000, debug: bool = False):
