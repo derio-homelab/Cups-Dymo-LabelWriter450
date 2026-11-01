@@ -344,3 +344,6 @@ run_kind: none
 
 <!-- fr:journal kind=decision scope=spec id=phase-split-2026-11-01-label-designer-ux-p3 created=2026-11-01T18:51:42+00:00 -->
 ### phase-split-2026-11-01-label-designer-ux-p3 · decision · ask: the designer UI, history panel and UX (R9, R10, R17-R21, R24) are their own ask
+
+<!-- fr:journal kind=decision scope=spec id=tier-2026-11-01-label-designer-ux-p2 created=2026-11-01T18:51:46+00:00 -->
+### tier-2026-11-01-label-designer-ux-p2 · decision · hard: phase 2 migrates the only persistent user data (saved_labels.json v1 to v2) and changes the print/save path every print relies on
