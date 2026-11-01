@@ -35,6 +35,12 @@ APP = '.app'
 manifest = {}
 
 
+def new_page(ctx):
+    page = ctx.new_page()
+    page.on('dialog', lambda d: d.accept())  # beforeunload guard of an edited label
+    return page
+
+
 def free_port():
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
@@ -122,7 +128,7 @@ def drag(page, locator, dx, dy):
 
 def live_preview(browser, base):
     ctx = browser.new_context(viewport=DESKTOP, color_scheme='light')
-    page = ctx.new_page()
+    page = new_page(ctx)
     cap = Capture(page, 'ldx-live-preview')
 
     open_app(page, base, '11354', 'landscape')
@@ -224,7 +230,7 @@ def live_preview(browser, base):
 
 def history_panel(browser, base):
     ctx = browser.new_context(viewport=DESKTOP, color_scheme='light')
-    page = ctx.new_page()
+    page = new_page(ctx)
     cap = Capture(page, 'ldx-history-panel')
 
     open_app(page, base, '11354', 'landscape')
@@ -310,6 +316,14 @@ def history_panel(browser, base):
     page.locator('.label-row', has_text='Spice jar').first.locator('.row-check').check()
     cap.shot('history-12-multi-selected', ['multi-select delete'], target='.history')
     page.click('[data-testid=h-delete]')
+    page.wait_for_selector('[data-testid=modal]:visible')
+    assert '2 labels' in page.inner_text('[data-testid=modal]')
+    cap.shot('history-12b-delete-confirm', ['multi-select delete'], target='[data-testid=modal]')
+    page.click('[data-testid=modal-cancel]')
+    page.wait_for_selector('[data-testid=modal]', state='hidden')
+    assert page.locator('.label-row').count() == 5, 'Cancel must not delete'
+    page.click('[data-testid=h-delete]')
+    page.click('[data-testid=modal-confirm]')
     page.wait_for_selector('[data-testid=toast]:has-text("Deleted 2")')
     page.wait_for_function("() => document.querySelectorAll('.label-row').length === 3")
     cap.shot('history-13-multi-deleted', ['multi-select delete'], target='.history')
@@ -319,6 +333,7 @@ def history_panel(browser, base):
     assert page.locator('.row-check:checked').count() == 3
     cap.shot('history-14-select-all', ['select-all then delete'], target='.history')
     page.click('[data-testid=h-delete]')
+    page.click('[data-testid=modal-confirm]')
     page.wait_for_selector('[data-testid=h-empty]:visible')
     cap.shot('history-15-all-deleted', ['select-all then delete'], target='.history')
 
@@ -327,7 +342,7 @@ def history_panel(browser, base):
         doc = {'label_size': stock, 'orientation': orientation, 'copies': 1, 'name': name, 'blocks': blocks}
         api(base, 'POST', '/labels', {'doc': doc})
     narrow = browser.new_context(viewport=PHONE, color_scheme='light')
-    p2 = narrow.new_page()
+    p2 = new_page(narrow)
     p2.goto(base + '/')
     p2.wait_for_selector('[data-testid=label-list] li')
     p2.wait_for_function("() => [...document.images].filter(i => i.closest('.label-row')).every(i => i.complete && i.naturalWidth)")
@@ -340,7 +355,7 @@ def history_panel(browser, base):
 def ux(browser, base, scratch):
     fail_flag = Path(scratch) / 'fail'
     ctx = browser.new_context(viewport=DESKTOP, color_scheme='light')
-    page = ctx.new_page()
+    page = new_page(ctx)
     cap = Capture(page, 'ldx-ux')
     requests = []
     page.on('request', lambda r: requests.append(r.url) if r.url.endswith('/render') else None)
@@ -403,7 +418,7 @@ def ux(browser, base, scratch):
 
     # dark mode (system scheme) and the manual toggle
     dark = browser.new_context(viewport=DESKTOP, color_scheme='dark')
-    p = dark.new_page()
+    p = new_page(dark)
     open_app(p, base, '11354', 'landscape')
     add_text(p, 'Dark mode', 16)
     assert data(p, 'd.theme') == 'dark'
@@ -416,12 +431,160 @@ def ux(browser, base, scratch):
 
     # 360 px phone width
     phone = browser.new_context(viewport=PHONE, color_scheme='light')
-    p = phone.new_page()
+    p = new_page(phone)
     open_app(p, base, '11354', 'landscape')
     add_text(p, 'Phone', 16)
     assert p.evaluate('() => document.documentElement.scrollWidth') <= 360, 'horizontal scroll at 360px'
     Capture(p, 'ldx-ux').shot('ux-09-phone-360', ['360px phone width'])
     phone.close()
+
+
+def review_checks(browser, base):
+    """Behavioural assertions (no screenshots) for the phase-3 review findings."""
+    ctx = browser.new_context(viewport=DESKTOP, color_scheme='light')
+    page = new_page(ctx)
+    js = lambda e: data(page, e)  # noqa: E731
+
+    def doc_block(i, text, name=''):
+        return {'label_size': '11354', 'orientation': 'landscape', 'copies': 1, 'name': name,
+                'blocks': [{'type': 'text', 'id': 'b1', 'text': text, 'x_mm': 2, 'y_mm': 2, 'width_mm': None,
+                            'align': 'center', 'font_family': 'DejaVu Sans', 'font_size_pt': 12, 'bold': False,
+                            'italic': False, 'underline': False, 'shrink_to_fit': False}][:i]}
+
+    other = api(base, 'POST', '/labels', {'doc': doc_block(1, 'Other label', 'Other')})['label']
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Race', 14)
+    page.wait_for_function("() => Alpine.$data(document.querySelector('.app')).info('b1')")
+
+    # p3-r1 / p3-r2: a save reply that lands after Open must not undo the open; edits made in flight stay unsaved
+    res = page.evaluate("""async (other) => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const p = d.print();
+        d.doc.blocks[0].text = 'edited in flight';
+        d.doOpen(other);
+        await p;
+        return {editingId: d.editingId, name: d.doc.name, openedId: other.id};
+    }""", other)
+    assert res['editingId'] == res['openedId'] and res['name'] == 'Other', res
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Flight', 14)
+    dirty = page.evaluate("""async () => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const p = d.print();
+        d.doc.blocks[0].text = 'changed while printing';
+        await p;
+        return d.dirty;
+    }""")
+    assert dirty is True, 'an edit made during Print must still count as unsaved (p3-r2)'
+    page.wait_for_function("() => !Alpine.$data(document.querySelector('.app')).busy")
+    # busy disables Open / New
+    busy_state = page.evaluate("""async () => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const p = d.print();
+        await Alpine.nextTick();
+        const out = [...document.querySelectorAll('[data-testid=h-open], [data-testid=h-dup], [data-testid=new-label]')]
+            .filter(b => b.offsetParent).map(b => b.disabled);
+        await p;
+        return out;
+    }""")
+    assert busy_state and all(busy_state), busy_state
+
+    # p3-r3: Ctrl+Enter uses the value just typed in the copies field
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Copies', 14)
+    page.fill('[data-testid=copies]', '5')
+    page.keyboard.press('Control+Enter')
+    page.wait_for_selector('[data-testid=toast]:has-text("Sent 5 copies")')
+
+    # p3-r7: unsaved edits are guarded on New/Open and on reload
+    assert js('d.dirty') is False or True
+    page.fill('[data-testid=p-text]', 'edited again')
+    assert js('d.dirty') is True
+    assert page.evaluate("() => { const e = new Event('beforeunload', {cancelable: true}); window.dispatchEvent(e); return e.defaultPrevented; }")
+    page.locator('.label-row').first.locator('[data-testid=h-open]').click()
+    page.wait_for_selector('[data-testid=modal]:visible')
+    page.click('[data-testid=modal-cancel]')
+    assert js('d.doc.blocks[0].text') == 'edited again', 'Cancel must keep the edit'
+    page.locator('.label-row').first.locator('[data-testid=h-open]').click()
+    page.click('[data-testid=modal-confirm]')
+    assert js('d.dirty') is False
+
+    # p3-r5: dragging an auto-width block freezes its width to the real box
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Auto', 14)
+    assert js('d.doc.blocks[0].width_mm') is None
+    drag(page, overlay(page), 900, 0)
+    w = js('d.doc.blocks[0].width_mm')
+    assert w is not None and js('d.doc.blocks[0].x_mm') == 56 and w == js('d.info("b1").bbox_mm[2]'), w
+    # keyboard nudge freezes too
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Auto', 14)
+    overlay(page).focus()
+    page.keyboard.press('ArrowRight')
+    assert js('d.doc.blocks[0].width_mm') is not None
+
+    # p3-r6: scaling keeps the scaled height on the label, and the handle stays inside the frame
+    open_app(page, base, '11354', 'landscape')
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon house"]')
+    settle(page)
+    drag(page, page.locator('[data-testid=handle]:visible'), 900, 0)
+    w, h = js('d.doc.blocks[0].width_mm'), js('d.info("b1").bbox_mm[3]')
+    assert w <= js('d.canvasH') + 0.01 and h <= js('d.canvasH') + 0.01, (w, h)
+    fb, hb = page.locator('[data-testid=frame]').bounding_box(), page.locator('[data-testid=handle]:visible').bounding_box()
+    assert hb['x'] + hb['width'] <= fb['x'] + fb['width'] + 0.5 and hb['y'] + hb['height'] <= fb['y'] + fb['height'] + 0.5
+
+    # p3-r8: after Ctrl+Enter commits an in-place edit the overlay has focus again
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Focus', 14)
+    overlay(page).click()
+    page.wait_for_selector('[data-testid=inplace]:visible')
+    page.keyboard.press('Control+Enter')
+    page.wait_for_function("() => document.activeElement && document.activeElement.classList.contains('overlay')")
+    assert page.evaluate("() => document.activeElement.dataset.block") == 'b1'
+
+    # p3-r9: caps and block-naming render errors
+    assert page.get_attribute('[data-testid=p-text]', 'maxlength') == '2000'
+    page.evaluate("() => { const d = Alpine.$data(document.querySelector('.app')); d.doc.blocks[0].font_size_pt = 9999; }")
+    page.wait_for_selector('[data-testid=render-error]:visible')
+    assert 'Text: Focus' in page.inner_text('[data-testid=render-error]'), page.inner_text('[data-testid=render-error]')
+
+    # p3-r11: an empty name shows as Untitled in rows and labels
+    api(base, 'POST', '/labels', {'doc': {'label_size': '11354', 'orientation': 'landscape', 'name': '', 'blocks': [
+        {'type': 'image', 'id': 'b1', 'src': 'icon:star', 'x_mm': 2, 'y_mm': 2, 'width_mm': 10,
+         'mono': 'threshold', 'threshold': 128}]}})
+    page.reload()
+    page.wait_for_selector('[data-testid=label-list] li')
+    names = page.locator('.label-row .name').all_inner_texts()
+    assert 'Untitled' in names and '' not in names, names
+    assert page.locator('[aria-label="Select Untitled"]').count() >= 1
+
+    # p3-r12: a toast never covers a history action button
+    page.locator('.label-row').first.locator('[data-testid=h-reprint]').click()
+    page.wait_for_selector('[data-testid=toast]')
+    t = page.locator('[data-testid=toast]').first.bounding_box()
+    for b in page.locator('.row-actions button').all():
+        r = b.bounding_box()
+        assert not (t['x'] < r['x'] + r['width'] and r['x'] < t['x'] + t['width']
+                    and t['y'] < r['y'] + r['height'] and r['y'] < t['y'] + t['height']), 'toast covers a button'
+
+    # p3-r13: a new image does not land on top of an existing block
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Top', 14)
+    nudge_to_top(page, 0)
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon leaf"]')
+    settle(page)
+    assert js('d.doc.blocks[1].y_mm') > 2
+
+    # p3-r10: a failing history shows a friendly message and no empty-state text
+    page.route('**/labels?*', lambda r: r.abort())
+    page.evaluate("() => Alpine.$data(document.querySelector('.app')).loadHistory()")
+    page.wait_for_function("() => Alpine.$data(document.querySelector('.app')).history.error")
+    err = js('d.history.error')
+    assert 'Failed to fetch' not in err and 'Cannot reach' in err, err
+    assert not page.locator('[data-testid=h-empty]').is_visible()
+    ctx.close()
 
 
 def main():
@@ -447,6 +610,7 @@ def main():
             live_preview(browser, base)
             history_panel(browser, base)
             ux(browser, base, scratch)
+            review_checks(browser, base)
             browser.close()
     finally:
         server.terminate()

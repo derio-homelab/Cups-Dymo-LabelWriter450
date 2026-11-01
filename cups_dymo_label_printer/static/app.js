@@ -447,7 +447,8 @@
             maxImageWidth: function (b) {
                 var i = this.info(b.id);
                 var aspect = i && i.bbox_mm[2] > 0 ? i.bbox_mm[3] / i.bbox_mm[2] : 1;
-                return Math.max(MIN_IMAGE_MM, Math.min(this.canvasW, this.canvasH / aspect));
+                var room = Math.min(this.canvasW - Math.max(0, b.x_mm), (this.canvasH - Math.max(0, b.y_mm)) / aspect);
+                return Math.max(MIN_IMAGE_MM, Math.min(this.canvasW, room));
             },
 
             setImageWidth: function (b, value, el) {
