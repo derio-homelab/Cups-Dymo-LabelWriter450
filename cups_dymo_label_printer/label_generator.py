@@ -9,7 +9,7 @@ wrapper kept for existing callers.
 from dataclasses import dataclass
 from typing import Literal
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from . import fonts, images
 from .config import DEFAULT_DPI, DEFAULT_FONT_SIZE, DEFAULT_LABEL_SIZE
@@ -163,7 +163,9 @@ def _draw_image(canvas: Image.Image, block: ImageBlock, dpi: int) -> dict:
         result['missing'] = True
         return result
     left, top = round(_mm_to_px(block.x_mm, dpi)), round(_mm_to_px(block.y_mm, dpi))
-    canvas.paste(mono.convert('L'), (left, top))
+    # Only the image's black pixels are painted, so its white never erases other blocks.
+    ink = ImageOps.invert(mono.convert('L'))
+    canvas.paste(Image.new('L', mono.size, 0), (left, top), ink)
     result['overflow'] = (left < 0 or top < 0 or left + mono.width > canvas.width
                           or top + mono.height > canvas.height)
     result['bbox_mm'] = _bbox_mm((_mm_to_px(block.x_mm, dpi), _mm_to_px(block.y_mm, dpi),

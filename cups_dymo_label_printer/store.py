@@ -404,7 +404,8 @@ class LabelStore:
             source = self._find(label_id)
             stamp = _iso(self._now())
             entry = copy.deepcopy(source)
-            entry.update(id=str(uuid.uuid4()), starred=False, created_at=stamp,
+            entry.update(id=str(uuid.uuid4()), name=f"{source['name']} (copy)",
+                         starred=False, created_at=stamp,
                          updated_at=stamp, last_printed_at=None, print_count=0)
             self._labels.insert(self._labels.index(source), entry)
             return entry

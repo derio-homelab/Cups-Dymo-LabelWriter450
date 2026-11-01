@@ -285,7 +285,8 @@ def test_duplicate_is_a_fresh_copy(store):
     assert dup["created_at"] > original["created_at"]
     assert dup["starred"] is False
     assert dup["last_printed_at"] is None and dup["print_count"] == 0
-    assert dup["blocks"] == original["blocks"] and dup["name"] == original["name"]
+    assert dup["blocks"] == original["blocks"]
+    assert dup["name"] == original["name"] + " (copy)"
     assert store.get(label["id"]) == original
 
 
@@ -661,3 +662,11 @@ def test_special_mode_bits_are_never_propagated(v1_path, monkeypatch):
     monkeypatch.undo()
     for written in (v1_path, v1_path.parent / "saved_labels.v1.json"):
         assert (written.stat().st_mode & 0o7777) == 0o644
+
+
+def test_duplicate_of_a_copy_names_it_again_and_is_distinguishable(store):
+    label = store.create(text_doc("Orig"))
+    first = store.duplicate(label["id"])
+    second = store.duplicate(first["id"])
+    assert first["name"] == "Orig (copy)"
+    assert second["name"] == "Orig (copy) (copy)"

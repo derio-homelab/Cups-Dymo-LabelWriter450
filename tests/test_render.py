@@ -220,3 +220,15 @@ def test_image_leaving_canvas_overflows():
     for x, y in ((50, 5), (5, 25), (-5, 5)):
         out = dict(inside, x_mm=x, y_mm=y)
         assert render(doc_of(out)).blocks[0]["overflow"] is True
+
+
+def test_image_block_does_not_paint_white_over_other_content():
+    text_only = render(doc_of(text_block("WWWWWW", font_size_pt=30))).image.convert("L")
+    both = render(doc_of(
+        text_block("WWWWWW", font_size_pt=30),
+        {"type": "image", "id": "i", "src": "icon:house", "x_mm": 1, "y_mm": 1, "width_mm": 20},
+    )).image.convert("L")
+    # Every pixel that was ink before the image is still ink; the image only adds black.
+    lost = ImageChops.subtract(ImageChops.invert(text_only), ImageChops.invert(both))
+    assert lost.getbbox() is None
+    assert ImageChops.difference(both, text_only).getbbox() is not None  # the icon did draw
