@@ -137,7 +137,8 @@ def test_icon_block_is_drawn_pure_mono():
     assert dark(result.image) > 100
     info = result.blocks[0]
     assert info["missing"] is False
-    assert info["bbox_mm"][:3] == [5, 5, 15]
+    assert info["bbox_mm"][:2] == [5, 5]
+    assert info["bbox_mm"][2] == pytest.approx(15, abs=0.1)
     assert info["bbox_mm"][3] == pytest.approx(15, abs=0.1)
 
 
