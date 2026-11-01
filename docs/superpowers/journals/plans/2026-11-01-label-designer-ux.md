@@ -270,3 +270,88 @@ the print flow was split into _render_for_print and _print_and_record as it was 
 ### no-refactor-p2-t4 · discovery · no-refactor-because P2.T4 (phase 2)
 
 route error mapping lives in one _label_route decorator from the start, and /memory DELETE was moved onto the shared _ids_from_request/_fail helpers in the same commit; nothing left to clean
+
+<!-- fr:journal kind=review scope=plan id=p2-review-r1 created=2026-11-01T20:01:57+00:00 phase=2 -->
+### p2-review-r1 · review · Phase 2 code review: 8 findings (7 in, 1 out) (phase 2)
+
+A dispatched general-purpose reviewer (superpowers:requesting-code-review template) reviewed ccf3223..f3c61e6 against the spec and plan phase 2, focused on data safety. It ran the suite (244 passed) and probes over 17 odd v1 entries, routes and thumbnail cost. Findings raised: p2-r1 to p2-r7 (in), p2-r8 (out). The orchestrator verified p2-r1, p2-r5 and p2-r6 against store.py and web_app.py; the implementer fixed all seven with tests (suite: 308 passed). A follow-up security review tightened p2-r4: backups take the source file's mode, masked 0o777. The orchestrator also checked that the new `migrated` text-cap exemption is only read from the history file, never from requests.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r1 created=2026-11-01T20:01:57+00:00 phase=2 state=open review_scope=in -->
+### p2-r1 · finding [open] (reviewer: in scope) · v1 migration silently dropped entries failing v2 validation (phase 2)
+
+store.py _migrate_v1_entry/_load_entries skipped on ValueError (font_size over cap, <=0 or null, long text, unknown stock, null copies/text).
+
+<!-- fr:journal kind=finding scope=plan id=p2-r2 created=2026-11-01T20:01:57+00:00 phase=2 state=open review_scope=in -->
+### p2-r2 · finding [open] (reviewer: in scope) · Non-object JSON body gave HTML 500 on four routes (phase 2)
+
+web_app.py _ids_from_request, star, re-print.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r3 created=2026-11-01T20:01:57+00:00 phase=2 state=open review_scope=in -->
+### p2-r3 · finding [open] (reviewer: in scope) · Thumbnail re-rendered every request, uncacheable (phase 2)
+
+web_app.py thumbnail route: no-cache, no ETag.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r4 created=2026-11-01T20:01:57+00:00 phase=2 state=open review_scope=in -->
+### p2-r4 · finding [open] (reviewer: in scope) · Atomic write left history/backups at 0600 (phase 2)
+
+store.py mkstemp mode carried by os.replace.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r5 created=2026-11-01T20:01:57+00:00 phase=2 state=open review_scope=in -->
+### p2-r5 · finding [open] (reviewer: in scope) · Content-match bump ignored printed name/copies and bumped the first match (phase 2)
+
+store.py _content_match/record_print.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r6 created=2026-11-01T20:01:57+00:00 phase=2 state=open review_scope=in -->
+### p2-r6 · finding [open] (reviewer: in scope) · Non-StoreError exceptions after a successful print returned 500 (phase 2)
+
+web_app.py /print post-print except was too narrow.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r7 created=2026-11-01T20:01:57+00:00 phase=2 state=open review_scope=in -->
+### p2-r7 · finding [open] (reviewer: in scope) · Sort route tests passed trivially (phase 2)
+
+tests/test_routes_labels.py:91-96.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r8 created=2026-11-01T20:01:57+00:00 phase=2 state=open review_scope=out -->
+### p2-r8 · finding [open] (reviewer: out of scope) · History file has no persistent volume; a future volume must mount a directory (os.replace over a single-file bind mount fails with EBUSY) (phase 2)
+
+Same root as sr-14: docker-compose.yml has had no volume since before this change. The EBUSY note constrains the follow-up fix.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r1-resolved created=2026-11-01T20:01:57+00:00 phase=2 state=fixed resolves=p2-r1 -->
+### p2-r1-resolved · finding [fixed] · resolves p2-r1: v1 migration silently dropped entries failing v2 validation (phase 2)
+
+5974207 — lenient v1 path; test_v1_entry_that_v1_could_hold_is_kept (23 cases), test_v1_duplicate_ids_get_a_new_id_instead_of_being_dropped, test_v1_non_dict_item_is_the_only_thing_skipped, test_v1_empty_list_migrates_to_an_empty_v2_file, test_editing_a_migrated_long_text_label_applies_the_caps_again, test_migrated_over_cap_label_reprints_and_thumbnails.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r2-resolved created=2026-11-01T20:01:57+00:00 phase=2 state=fixed resolves=p2-r2 -->
+### p2-r2-resolved · finding [fixed] · resolves p2-r2: Non-object JSON body gave HTML 500 on four routes (phase 2)
+
+255f75d — test_a_non_object_body_is_400_json (4 routes).
+
+<!-- fr:journal kind=finding scope=plan id=p2-r3-resolved created=2026-11-01T20:01:57+00:00 phase=2 state=fixed resolves=p2-r3 -->
+### p2-r3-resolved · finding [fixed] · resolves p2-r3: Thumbnail re-rendered every request, uncacheable (phase 2)
+
+b5f30f7 — immutable cache when versioned, ETag/304 otherwise, LRU keyed by (id, updated_at, content_key); test_versioned_thumbnail_is_immutable, test_unversioned_thumbnail_revalidates_by_etag, test_thumbnail_renders_once_per_version, test_thumbnail_cache_is_bounded.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r4-resolved created=2026-11-01T20:01:57+00:00 phase=2 state=fixed resolves=p2-r4 -->
+### p2-r4-resolved · finding [fixed] · resolves p2-r4: Atomic write left history/backups at 0600 (phase 2)
+
+f965523 + e1eae6e — mode preserved; backups take the source mode; masked 0o777; test_atomic_write_keeps_the_existing_mode, test_a_new_file_gets_the_umask_default, test_backups_take_the_source_mode_not_the_umask, test_corrupt_copy_takes_the_source_mode, test_main_write_keeps_0640, test_special_mode_bits_are_never_propagated.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r5-resolved created=2026-11-01T20:01:57+00:00 phase=2 state=fixed resolves=p2-r5 -->
+### p2-r5-resolved · finding [fixed] · resolves p2-r5: Content-match bump ignored printed name/copies and bumped the first match (phase 2)
+
+a6df57a — adopts the printed copies and an explicit name; bumps the most recently printed match; rule appended to spec R16; test_content_match_adopts_an_explicit_name, test_duplicate_then_print_bumps_the_most_recently_printed_match and 3 more.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r6-resolved created=2026-11-01T20:01:57+00:00 phase=2 state=fixed resolves=p2-r6 -->
+### p2-r6-resolved · finding [fixed] · resolves p2-r6: Non-StoreError exceptions after a successful print returned 500 (phase 2)
+
+7a8105f — test_unexpected_post_print_history_error_is_200_with_warning (both print routes).
+
+<!-- fr:journal kind=finding scope=plan id=p2-r7-resolved created=2026-11-01T20:01:57+00:00 phase=2 state=fixed resolves=p2-r7 -->
+### p2-r7-resolved · finding [fixed] · resolves p2-r7: Sort route tests passed trivially (phase 2)
+
+4e46bff — test_list_sorts_with_nothing_starred, test_list_starred_filter_forms, and 2 more; mutation-checked by breaking the sort/starred passthrough (3 failed).
+
+<!-- fr:journal kind=finding scope=plan id=p2-r8-resolved created=2026-11-01T20:01:57+00:00 phase=2 state=open resolves=p2-r8 out_of_scope=true -->
+### p2-r8-resolved · finding [out-of-scope] · resolves p2-r8: History file has no persistent volume; a future volume must mount a directory (os.replace over a single-file bind mount fails with EBUSY) (phase 2)
+
+Not caused by this change: the compose file has had no volume for saved_labels.json since before this branch (sr-14). Filed with sr-14 as one follow-up, carrying the directory-mount constraint.
