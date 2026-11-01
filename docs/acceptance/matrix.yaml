@@ -209,9 +209,14 @@ rows:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R18
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R19
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R20
-    levels: {}
-    status: not-implemented
-    notes: ''
+    levels:
+      api:
+      - Cups-Dymo-LabelWriter450:tests/test_ui_assets.py
+      ui:
+      - Cups-Dymo-LabelWriter450:scripts/capture_visual.py
+    status: unwired
+    notes: verified by the Playwright capture (scripts/capture_visual.py), not run in
+      CI; this fr has no 'skipped' status, unwired is its equivalent
     visual:
       states:
       - light mode
