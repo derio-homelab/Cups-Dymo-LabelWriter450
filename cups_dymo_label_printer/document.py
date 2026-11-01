@@ -22,6 +22,9 @@ DEFAULT_THRESHOLD = 128
 ORIENTATIONS = ('portrait', 'landscape')
 ALIGNMENTS = ('left', 'center', 'right')
 MONO_MODES = ('threshold', 'dither')
+MAX_TEXT_CHARS = 2000
+MAX_TEXT_LINES = 50
+MAX_BLOCKS = 30
 V1_DPI = 300  # v1 payloads carried font size in pixels at 300 DPI
 
 
@@ -69,6 +72,10 @@ class TextBlock:
         _number(self.width_mm, 'width_mm', positive=True, nullable=True)
         if not isinstance(self.text, str):
             raise ValueError("text must be a string")
+        if len(self.text) > MAX_TEXT_CHARS:
+            raise ValueError(f"text must not exceed {MAX_TEXT_CHARS} characters")
+        if self.text.count('\n') + 1 > MAX_TEXT_LINES:
+            raise ValueError(f"text must not exceed {MAX_TEXT_LINES} lines")
 
     def to_json(self) -> dict:
         return {
@@ -116,6 +123,11 @@ Block = Union[TextBlock, ImageBlock]
 _BLOCK_TYPES = {'text': TextBlock, 'image': ImageBlock}
 
 
+def _check_font_cap(block: Block, long_edge_mm: float) -> None:
+    if isinstance(block, TextBlock) and block.font_size_pt > long_edge_mm * 72 / 25.4:
+        raise ValueError("font_size_pt must not exceed the label's long edge")
+
+
 def default_orientation(label_size: str) -> str:
     size = LABEL_SIZES[label_size]
     return 'portrait' if size['width_mm'] <= size['height_mm'] else 'landscape'
@@ -157,6 +169,8 @@ class LabelDoc:
         blocks = raw.get('blocks', [])
         if not isinstance(blocks, list):
             raise ValueError("blocks must be a list")
+        if len(blocks) > MAX_BLOCKS:
+            raise ValueError(f"a label may hold at most {MAX_BLOCKS} blocks")
         try:
             copies = int(raw.get('copies', 1))
         except (TypeError, ValueError):
@@ -172,6 +186,7 @@ class LabelDoc:
         for block in doc.blocks:
             if isinstance(block, ImageBlock) and block.width_mm > long_edge:
                 raise ValueError(f"width_mm must not exceed the label's long edge ({long_edge} mm)")
+            _check_font_cap(block, long_edge)
         return doc
 
     def to_json(self) -> dict:
@@ -204,6 +219,8 @@ def from_flat(payload: dict, dpi: int = V1_DPI) -> LabelDoc:
         bold=DEFAULT_FONT_BOLD,
     )
     block.validate()
+    _check_font_cap(block, max(LABEL_SIZES[label_size]['width_mm'],
+                               LABEL_SIZES[label_size]['height_mm']))
     return LabelDoc(
         label_size=label_size,
         orientation=default_orientation(label_size),

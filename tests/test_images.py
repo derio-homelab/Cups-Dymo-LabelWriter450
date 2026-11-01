@@ -149,3 +149,29 @@ def test_load_refuses_over_pixel_budget_svg():
     ref = images.store_upload(svg, "tall.svg")
     with pytest.raises(images.ImageTooLarge):
         images.load_image(ref, width_px=2000)
+
+
+NS = 'xmlns="http://www.w3.org/2000/svg"'
+
+
+@pytest.mark.parametrize("name,svg", [
+    ("single-quoted viewBox", f"<svg {NS} viewBox='0 0 1 1000'><rect width='1' height='1000'/></svg>"),
+    ("width/height only", f'<svg {NS} width="1" height="100000"><rect width="1" height="1"/></svg>'),
+    ("nested viewBox", f'<svg {NS} viewBox="0 0 10 10"><svg viewBox="0 0 1 9000" height="9000"/></svg>'),
+    ("units", f'<svg {NS} width="1mm" height="5000mm"><rect width="1" height="1"/></svg>'),
+    ("extreme aspect", f'<svg {NS} viewBox="0 0 1 60"><rect width="1" height="60"/></svg>'),
+])
+def test_svg_shapes_are_refused_or_within_budget(name, svg):
+    ref = images.store_upload(svg.encode(), "x.svg")
+    try:
+        img = images.load_image(ref, width_px=3000)
+    except images.ImageTooLarge:
+        return
+    assert img.width * img.height <= images.MAX_RENDER_PIXELS
+
+
+def test_svg_output_size_is_fixed_by_us():
+    svg = f'<svg {NS} width="500" height="500" viewBox="0 0 20 10"><rect width="20" height="10"/></svg>'
+    ref = images.store_upload(svg.encode(), "x.svg")
+    img = images.load_image(ref, width_px=100)
+    assert img.size == (100, 100)   # cairosvg sizes the canvas from width/height, not viewBox

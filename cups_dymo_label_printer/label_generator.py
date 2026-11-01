@@ -26,7 +26,7 @@ from .document import (
 AlignmentType = Literal['left', 'center', 'right']
 
 MIN_SHRINK_PT = 6
-SHRINK_STEP_PT = 0.5
+SHRINK_ITERATIONS = 12
 TEXT_THRESHOLD = 128
 
 
@@ -97,12 +97,26 @@ def _layout_text_block(block: TextBlock, canvas_px: tuple, dpi: int,
 
 
 def _fit_text_block(block: TextBlock, canvas_px: tuple, dpi: int) -> TextLayout:
-    size = block.font_size_pt
-    layout = _layout_text_block(block, canvas_px, dpi, size)
-    while block.shrink_to_fit and layout.overflow and size > MIN_SHRINK_PT:
-        size = max(MIN_SHRINK_PT, size - SHRINK_STEP_PT)
-        layout = _layout_text_block(block, canvas_px, dpi, size)
-    return layout
+    """Layout at the requested size, or (shrink_to_fit) the largest size that fits.
+
+    A bounded binary search over [MIN_SHRINK_PT, requested size]; fitting is
+    monotone in size, so SHRINK_ITERATIONS halvings are enough.
+    """
+    layout = _layout_text_block(block, canvas_px, dpi, block.font_size_pt)
+    if not (block.shrink_to_fit and layout.overflow) or block.font_size_pt <= MIN_SHRINK_PT:
+        return layout
+    smallest = _layout_text_block(block, canvas_px, dpi, MIN_SHRINK_PT)
+    if smallest.overflow:
+        return smallest
+    lo, hi, best = MIN_SHRINK_PT, block.font_size_pt, smallest
+    for _ in range(SHRINK_ITERATIONS):
+        mid = (lo + hi) / 2
+        candidate = _layout_text_block(block, canvas_px, dpi, mid)
+        if candidate.overflow:
+            hi = mid
+        else:
+            lo, best = mid, candidate
+    return best
 
 
 def _draw_text(draw: ImageDraw.ImageDraw, block: TextBlock, layout: TextLayout) -> None:

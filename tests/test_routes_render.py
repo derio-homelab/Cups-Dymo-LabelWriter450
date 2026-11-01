@@ -207,3 +207,36 @@ def test_upload_decompression_bomb_is_400(client):
     buf = io.BytesIO()
     Image.new("1", (20000, 20000), 1).save(buf, "PNG")
     assert upload(c, buf.getvalue()).status_code == 400
+
+
+def test_images_served_with_hardening_headers(client):
+    c, _ = client
+    png_ref = upload(c, png_bytes()).get_json()["ref"]
+    svg = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+           b'<script>alert(1)</script><rect width="10" height="10"/></svg>')
+    svg_ref = upload(c, svg, "x.svg").get_json()["ref"]
+    for ref in (png_ref, svg_ref):
+        resp = c.get("/images/" + ref.split(":", 1)[1])
+        assert resp.headers["X-Content-Type-Options"] == "nosniff"
+        assert resp.headers["Content-Security-Policy"] == (
+            "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+    assert "attachment" in c.get("/images/" + svg_ref.split(":", 1)[1]).headers["Content-Disposition"]
+
+
+def test_traversal_names_are_404(client):
+    c, _ = client
+    for name in ("..%2F..%2Fetc%2Fpasswd", "%2e%2e%2fx.png", "a.png", "A" * 64 + ".png"):
+        assert c.get("/images/" + name).status_code == 404
+
+
+def test_svg_external_references_are_not_fetched(client, tmp_path):
+    c, _ = client
+    secret = tmp_path / "secret.png"
+    Image.new("RGB", (20, 20), "red").save(secret)
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+           f'viewBox="0 0 20 20"><image width="20" height="20" href="file://{secret}"/>'
+           f'<image width="20" height="20" xlink:href="http://127.0.0.1:9/x.png"/></svg>').encode()
+    ref = upload(c, svg, "x.svg").get_json()["ref"]
+    from cups_dymo_label_printer import images
+    img = images.load_image(ref, 20)
+    assert img.getpixel((10, 10)) == (255, 255, 255)   # nothing was loaded

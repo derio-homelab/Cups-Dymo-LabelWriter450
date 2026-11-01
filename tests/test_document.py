@@ -113,3 +113,30 @@ def test_image_width_bounded_by_label_long_edge(width):
 def test_image_width_at_long_edge_ok():
     LabelDoc.from_json(_doc(label_size="30252", blocks=[
         {"type": "image", "src": "icon:star", "width_mm": 89}]))
+
+
+def test_font_size_capped_at_label_long_edge_in_points():
+    cap = 89 * 72 / 25.4
+    LabelDoc.from_json(_doc(label_size="30252", blocks=[
+        {"type": "text", "text": "a", "font_size_pt": cap}]))
+    with pytest.raises(ValueError, match="font_size_pt"):
+        LabelDoc.from_json(_doc(label_size="30252", blocks=[
+            {"type": "text", "text": "a", "font_size_pt": cap + 1}]))
+    with pytest.raises(ValueError, match="font_size_pt"):
+        from_flat({"text": "a", "font_size": 10 ** 6})
+
+
+@pytest.mark.parametrize("blocks,match", [
+    ([{"type": "text", "text": "x" * 2001}], "text"),
+    ([{"type": "text", "text": "\n" * 50}], "lines"),
+    ([{"type": "text", "text": "a"}] * 31, "blocks"),
+])
+def test_size_caps(blocks, match):
+    with pytest.raises(ValueError, match=match):
+        LabelDoc.from_json(_doc(blocks=blocks))
+
+
+def test_size_caps_boundaries_ok():
+    LabelDoc.from_json(_doc(blocks=[{"type": "text", "text": "x" * 2000}]))
+    LabelDoc.from_json(_doc(blocks=[{"type": "text", "text": "\n" * 49}]))
+    LabelDoc.from_json(_doc(blocks=[{"type": "text", "text": "a"}] * 30))

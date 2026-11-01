@@ -131,36 +131,33 @@ def _read_ref(ref: str) -> tuple:
         return fh.read(), is_svg
 
 
-_VIEWBOX_RE = re.compile(rb'viewBox\s*=\s*"\s*[-\d.e]+[ ,]+[-\d.e]+[ ,]+([\d.e]+)[ ,]+([\d.e]+)\s*"')
-_DIM_RE = re.compile(rb'<svg[^>]*?\s%s\s*=\s*"([\d.]+)(?:px)?"')
-
-
-def _svg_aspect(data: bytes) -> float:
-    """Height/width of an SVG from its viewBox or width/height (rasterized probe as fallback)."""
-    head = data[:65536]
-    pair = None
-    match = _VIEWBOX_RE.search(head)
-    if match:
-        pair = (match.group(1), match.group(2))
-    else:
-        w, h = (re.search(_DIM_RE.pattern % name, head) for name in (b'width', b'height'))
-        if w and h:
-            pair = (w.group(1), h.group(1))
-    if pair:
-        try:
-            w, h = float(pair[0]), float(pair[1])
-            if w > 0 and h > 0:
-                return h / w
-        except ValueError:
-            pass
-    import cairosvg
-    probe = Image.open(io.BytesIO(cairosvg.svg2png(bytestring=data, output_width=64)))
-    return probe.height / probe.width
-
-
 def _check_budget(width_px: float, height_px: float) -> None:
     if width_px * height_px > MAX_RENDER_PIXELS:
         raise ImageTooLarge('Image would be rendered too large')
+
+
+SVG_PROBE_WIDTH = 64
+SVG_MAX_ASPECT = 50
+
+
+def _svg_to_png(data: bytes, ref: str, **size) -> bytes:
+    import cairosvg
+    try:
+        return cairosvg.svg2png(bytestring=data, **size)   # safe mode: nothing external is fetched
+    except Exception as exc:
+        if 'INVALID_SIZE' in str(exc):
+            raise ImageTooLarge('Image would be rendered too large') from exc
+        raise ImageMissing(ref) from exc
+
+
+def _rasterize_svg(data: bytes, width_px: int, ref: str) -> bytes:
+    """Rasterize with a size fixed by us: probe the true aspect, budget, then render."""
+    probe = Image.open(io.BytesIO(_svg_to_png(data, ref, output_width=SVG_PROBE_WIDTH)))
+    if probe.height > SVG_PROBE_WIDTH * SVG_MAX_ASPECT:
+        raise ImageTooLarge('Image aspect ratio is too extreme')
+    height_px = max(1, round(width_px * probe.height / probe.width))
+    _check_budget(width_px, height_px)
+    return _svg_to_png(data, ref, output_width=width_px, output_height=height_px)
 
 
 def load_image(ref: str, width_px: int) -> Image.Image:
@@ -168,14 +165,7 @@ def load_image(ref: str, width_px: int) -> Image.Image:
     width_px = max(1, int(width_px))
     data, is_svg = _read_ref(ref)
     if is_svg:
-        import cairosvg
-        try:
-            _check_budget(width_px, width_px * _svg_aspect(data))
-            data = cairosvg.svg2png(bytestring=data, output_width=width_px)
-        except ImageTooLarge:
-            raise
-        except Exception as exc:  # malformed SVG
-            raise ImageMissing(ref) from exc
+        data = _rasterize_svg(data, width_px, ref)
     try:
         img = Image.open(io.BytesIO(data))
         if not is_svg:

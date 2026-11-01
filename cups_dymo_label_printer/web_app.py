@@ -173,7 +173,13 @@ def get_image(name: str):
     except images.ImageMissing:
         return jsonify({'success': False, 'error': 'Image not found'}), 404
     mimetype = {'png': 'image/png', 'jpg': 'image/jpeg', 'svg': 'image/svg+xml'}[name.rsplit('.', 1)[1]]
-    return send_file(path, mimetype=mimetype)
+    response = send_file(path, mimetype=mimetype)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+    if mimetype == 'image/svg+xml':
+        response.headers['Content-Disposition'] = 'attachment'
+    return response
 
 
 @app.route('/render', methods=['POST'])

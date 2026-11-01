@@ -157,3 +157,18 @@ def test_image_width_clamped_to_canvas_width():
     result = render(doc_of(block))
     assert result.image.size[0] == int(57 * 300 / 25.4)
     assert result.blocks[0]["missing"] is False
+
+
+def test_shrink_to_fit_is_a_bounded_search(monkeypatch):
+    from cups_dymo_label_printer import label_generator as lg
+    calls = []
+    real = lg._layout_text_block
+    monkeypatch.setattr(lg, "_layout_text_block",
+                        lambda *a, **k: calls.append(1) or real(*a, **k))
+    result = render(doc_of(text_block("Hello World", font_size_pt=150, shrink_to_fit=True)))
+    assert result.blocks[0]["overflow"] is False
+    assert len(calls) <= 15
+    # and it lands near the largest size that fits (not far below it)
+    size = result.blocks[0]["size_pt"]
+    probe = render(doc_of(text_block("Hello World", font_size_pt=size + 1)))
+    assert probe.blocks[0]["overflow"] is True
