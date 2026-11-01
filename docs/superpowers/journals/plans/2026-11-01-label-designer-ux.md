@@ -355,3 +355,43 @@ a6df57a — adopts the printed copies and an explicit name; bumps the most recen
 ### p2-r8-resolved · finding [out-of-scope] · resolves p2-r8: History file has no persistent volume; a future volume must mount a directory (os.replace over a single-file bind mount fails with EBUSY) (phase 2)
 
 Not caused by this change: the compose file has had no volume for saved_labels.json since before this branch (sr-14). Filed with sr-14 as one follow-up, carrying the directory-mount constraint.
+
+<!-- fr:journal kind=decision scope=plan id=p3-dec1 created=2026-11-01T20:36:15+00:00 phase=3 -->
+### p3-dec1 · decision · Select options are server-rendered; font selects use :selected (phase 3)
+
+Alpine x-model on a select whose options are created later by x-for loses its value (reload showed the first stock). The stock options are rendered by Jinja and the font selects bind option :selected with an @change handler.
+
+<!-- fr:journal kind=decision scope=plan id=p3-dec2 created=2026-11-01T20:36:15+00:00 phase=3 -->
+### p3-dec2 · decision · Text boxes keep width_mm null when dragged; a Box width field was added (phase 3)
+
+Moving a null-width text block shrinks its box (renderer: label width minus x minus margin), so the box is not rigid. A Box width (mm) inspector field (blank = auto) lets a user fix it; the drag-limit evidence uses 25 mm. The keep-1-mm clamp uses the last rendered bbox.
+
+<!-- fr:journal kind=discovery scope=plan id=p3-d1 created=2026-11-01T20:36:15+00:00 phase=3 -->
+### p3-d1 · discovery · Alpine 3.14.1 package ships no LICENSE file (phase 3)
+
+npm pack alpinejs@3.14.1 contains dist/cdn.min.js (copied unmodified to static/vendor/alpine.min.js) but no LICENSE; static/vendor/LICENSE carries the MIT text with the upstream copyright line and names the version.
+
+<!-- fr:journal kind=discovery scope=plan id=p3-d2 created=2026-11-01T20:36:15+00:00 phase=3 -->
+### p3-d2 · discovery · Dev machine lacks the catalog fonts; matplotlib supplies real DejaVu (phase 3)
+
+scripts/dev_server.py adds matplotlib's bundled DejaVu directory (when importable) to LABEL_FONT_DIRS beside tests/fixtures/fonts, so the capture shows several real families. The capture asserts the limits it shows (drag clamp 56 mm, scale = label width, copies 1/99, no horizontal scroll at 360 px, Ctrl+P prevented plus one /render).
+
+<!-- fr:journal kind=discovery scope=plan id=p3-d3 created=2026-11-01T20:36:15+00:00 phase=3 -->
+### p3-d3 · discovery · Acceptance matrix (phase 3)
+
+ldx-single-ui and ldx-acceptance-doc moved to ci with refs. ldx-live-preview, ldx-history-panel, ldx-ux and ldx-label-name stay not-implemented: they await the orchestrator's visual-evidence acceptance and have no automated browser test in CI (the Playwright capture is not a CI job).
+
+<!-- fr:journal kind=discovery scope=plan id=no-refactor-p3-t1 created=2026-11-01T20:36:15+00:00 phase=3 -->
+### no-refactor-p3-t1 · discovery · no-refactor-because P3.T1 (phase 3)
+
+the shell and assets were written once as their final shape; nothing to clean
+
+<!-- fr:journal kind=discovery scope=plan id=no-refactor-p3-t5 created=2026-11-01T20:36:15+00:00 phase=3 -->
+### no-refactor-p3-t5 · discovery · no-refactor-because P3.T5 (phase 3)
+
+shortcuts, status polling and storage helpers were written as single small functions; nothing to clean
+
+<!-- fr:journal kind=discovery scope=plan id=no-refactor-p3-t6 created=2026-11-01T20:36:15+00:00 phase=3 -->
+### no-refactor-p3-t6 · discovery · no-refactor-because P3.T6 (phase 3)
+
+a deletion plus docs; nothing to clean
