@@ -40,8 +40,9 @@ These scenarios describe the expected, user-visible behaviors of the LabelWriter
 - Given a PIL image and label size `11354`
 - And copies set to `2`
 - When calling `PrinterService.print_image`
-- Then it saves a temporary PNG
-- And calls `cups.Connection.printFile` with options `media=w162h90`, `fit-to-page=True`, `copies=2`
+- Then it rotates the image 90° when its aspect differs from the media's (`wNNNhNNN`)
+- And saves a temporary PNG
+- And calls `cups.Connection.printFile` with options `media=w162h90`, `fit-to-page=True`, `orientation-requested=3`, `copies=2`
 - And removes the temporary file after submission
 - And returns the CUPS job id from `printFile`
 
