@@ -79,22 +79,57 @@ def test_create_rejects_an_invalid_doc(client):
     assert resp.status_code == 400 and resp.get_json()["success"] is False
 
 
-def test_list_filters_search_and_sort(client):
+def _three(c):
+    """banana, Apple, cherry created in that order; banana printed. The three sorts
+    then all disagree: last_printed b,c,A - created c,A,b - name A,b,c."""
+    banana, apple, cherry = create(c, "banana"), create(c, "Apple"), create(c, "cherry")
+    assert c.post(f"/labels/{banana['id']}/print", json={}).status_code == 200
+    return banana["id"], apple["id"], cherry["id"]
+
+
+def _ids(c, query):
+    resp = c.get("/labels" + query)
+    assert resp.status_code == 200, resp.get_json()
+    return [l["id"] for l in resp.get_json()["labels"]]
+
+
+def test_list_sorts_with_nothing_starred(client):
     c, _ = client
-    a = create(c, "banana")
-    b = create(c, "Apple")
-    c.put(f"/labels/{a['id']}/star", json={"starred": True})
-
-    def ids(query):
-        return [l["id"] for l in c.get("/labels" + query).get_json()["labels"]]
-
-    assert ids("") == [a["id"], b["id"]]
-    assert ids("?sort=name") == [a["id"], b["id"]]  # starred first, still
-    assert ids("?sort=created") == [a["id"], b["id"]]
-    assert ids("?q=APP") == [b["id"]]
-    assert ids("?starred=true") == [a["id"]]
-    assert ids("?starred=false") == [a["id"], b["id"]]
+    banana, apple, cherry = _three(c)
+    assert _ids(c, "") == [banana, cherry, apple]
+    assert _ids(c, "?sort=last_printed") == [banana, cherry, apple]
+    assert _ids(c, "?sort=created") == [cherry, apple, banana]
+    assert _ids(c, "?sort=name") == [apple, banana, cherry]
     assert c.get("/labels?sort=size").status_code == 400
+
+
+@pytest.mark.parametrize("sort", ["last_printed", "created", "name"])
+def test_list_puts_starred_first_under_each_sort(client, sort):
+    c, _ = client
+    banana, apple, cherry = _three(c)
+    starred = {"last_printed": apple, "created": banana, "name": cherry}[sort]
+    c.put(f"/labels/{starred}/star", json={"starred": True})
+    assert _ids(c, f"?sort={sort}")[0] == starred
+
+
+@pytest.mark.parametrize("value,only", [
+    ("1", True), ("yes", True), ("true", True), ("TRUE", True),
+    ("0", False), ("false", False), ("", False),
+])
+def test_list_starred_filter_forms(client, value, only):
+    c, _ = client
+    banana, apple, cherry = _three(c)
+    c.put(f"/labels/{apple}/star", json={"starred": True})
+    expected = [apple] if only else [apple, banana, cherry]
+    assert _ids(c, f"?starred={value}") == expected
+
+
+def test_list_search(client):
+    c, _ = client
+    banana, apple, cherry = _three(c)
+    assert _ids(c, "?q=APP") == [apple]
+    assert _ids(c, "?q=an") == [banana]
+    assert _ids(c, "?q=zzz") == []
 
 
 def test_get_put_delete_one(client):
