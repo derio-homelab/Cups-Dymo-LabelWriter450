@@ -341,3 +341,6 @@ run_kind: none
 
 <!-- fr:journal kind=decision scope=spec id=phase-split-2026-11-01-label-designer-ux-p2 created=2026-11-01T18:51:37+00:00 -->
 ### phase-split-2026-11-01-label-designer-ux-p2 · decision · ask: history store, /labels API and print flow (R12-R16, R25) are their own ask
+
+<!-- fr:journal kind=decision scope=spec id=phase-split-2026-11-01-label-designer-ux-p3 created=2026-11-01T18:51:42+00:00 -->
+### phase-split-2026-11-01-label-designer-ux-p3 · decision · ask: the designer UI, history panel and UX (R9, R10, R17-R21, R24) are their own ask
