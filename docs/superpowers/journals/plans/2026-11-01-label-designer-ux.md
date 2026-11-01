@@ -650,3 +650,8 @@ Fixed in 08e5d44; verified by the reviewer's re-run capture and probes; asserted
 ### p3-r25-resolved · finding [fixed] · resolves p3-r25: In-flow toast strip off-screen when scrolled (history action feedback invisible) (phase 3)
 
 Fixed in 3439a07; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r10-resolved-2 created=2026-11-01T22:24:39+00:00 phase=1 state=open resolves=p1-r10 tracked_by=https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/5 -->
+### p1-r10-resolved-2 · finding [deferred → https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/5] · resolves p1-r10: copies unbounded (negative/zero/huge) passed to CUPS (phase 1)
+
+Filed at deliver as https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/5.
