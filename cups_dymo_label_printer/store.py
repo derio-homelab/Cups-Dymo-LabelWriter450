@@ -271,14 +271,23 @@ class LabelStore:
 
     # --- persistence --------------------------------------------------------
 
-    def _write_atomic(self, path: Path, payload: bytes) -> None:
+    def _file_mode(self) -> int:
+        """Permission bits for anything written: the history file's own (0o777 only, so
+        setuid/setgid/sticky never propagate), else the umask default.
+
+        Backups and corrupt copies take the history file's mode too, so a
+        restricted saved_labels.json never yields a looser copy.
+        """
         try:
-            mode = os.stat(path).st_mode & 0o7777
+            return os.stat(self._path).st_mode & 0o777
         except FileNotFoundError:
-            mode = 0o666 & ~_UMASK
+            return 0o666 & ~_UMASK
+
+    def _write_atomic(self, path: Path, payload: bytes) -> None:
+        mode = self._file_mode()
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f'.{path.name}.', suffix='.tmp')
         try:
-            os.fchmod(fd, mode)  # mkstemp makes 0600; keep the target's mode
+            os.fchmod(fd, mode)  # mkstemp makes 0600
             with os.fdopen(fd, 'wb') as fh:
                 fh.write(payload)
                 fh.flush()

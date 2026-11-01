@@ -618,3 +618,46 @@ def test_equal_matches_fall_back_to_list_order(tmp_path):
     assert LabelStore(path, now=Clock()).record_print(text_doc("Same", bold=True,
                                                                 font_size_pt=9.6,
                                                                 y_mm=None))["id"] == "a"
+
+
+def test_backups_take_the_source_mode_not_the_umask(v1_path):
+    os.chmod(v1_path, 0o600)
+    LabelStore(v1_path, now=Clock()).create(text_doc("x"))
+    assert ((v1_path.parent / "saved_labels.v1.json").stat().st_mode & 0o777) == 0o600
+    assert (v1_path.stat().st_mode & 0o777) == 0o600
+
+
+def test_corrupt_copy_takes_the_source_mode(tmp_path):
+    path = tmp_path / "saved_labels.json"
+    path.write_bytes(b"{not json")
+    os.chmod(path, 0o600)
+    LabelStore(path, now=Clock()).create(text_doc("x"))
+    assert ((tmp_path / "saved_labels.corrupt.json").stat().st_mode & 0o777) == 0o600
+
+
+def test_main_write_keeps_0640(tmp_path):
+    path = tmp_path / "saved_labels.json"
+    path.write_text("[]", encoding="utf-8")
+    os.chmod(path, 0o640)
+    LabelStore(path, now=Clock()).create(text_doc("x"))
+    assert (path.stat().st_mode & 0o7777) == 0o640
+
+
+def test_special_mode_bits_are_never_propagated(v1_path, monkeypatch):
+    # the OS may refuse to set setgid on a plain file, so report one via stat
+    real_stat = os.stat
+
+    def stat(p, *args, **kwargs):
+        result = real_stat(p, *args, **kwargs)
+        if str(p) == str(v1_path):
+            import types
+            return types.SimpleNamespace(st_mode=result.st_mode | 0o6000 | 0o1000)
+        return result
+
+    os.chmod(v1_path, 0o644)
+    monkeypatch.setattr(store_mod.os, "stat", stat)
+    store = LabelStore(v1_path, now=Clock())
+    store.create(text_doc("x"))
+    monkeypatch.undo()
+    for written in (v1_path, v1_path.parent / "saved_labels.v1.json"):
+        assert (written.stat().st_mode & 0o7777) == 0o644
