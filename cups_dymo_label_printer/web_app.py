@@ -9,14 +9,19 @@ import base64
 import json
 import os
 import uuid
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 
 from .config import LABEL_SIZES, DEFAULT_LABEL_SIZE, DEFAULT_FONT_SIZE
-from .label_generator import create_label_image
+from . import fonts, images
+from .document import LabelDoc, TextBlock, ImageBlock, canvas_mm, from_flat, pt_to_px
+from .label_generator import render
 from .printer_service import PrinterService
 
 
+UPLOAD_OVERHEAD_BYTES = 64 * 1024  # multipart framing on top of the file itself
+
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = images.max_upload_bytes() + UPLOAD_OVERHEAD_BYTES
 printer_service = PrinterService()
 _MEMORY_FILE = os.getenv('LABEL_MEMORY_FILE', 'saved_labels.json')
 _saved_labels: list[dict] = []  # in-memory stack of saved labels
@@ -92,33 +97,116 @@ def index():
     return render_template('index.html', label_sizes=LABEL_SIZES)
 
 
+@app.errorhandler(413)
+def _too_large(_error):
+    return jsonify({'success': False, 'error': 'Upload is too large'}), 413
+
+
+def _doc_from_request(data: dict, default_text: str = '') -> LabelDoc:
+    """Build a document from a doc payload (``{doc}`` or bare) or a v1 flat payload."""
+    if not isinstance(data, dict):
+        raise ValueError('Request body must be a JSON object')
+    raw = data.get('doc', data if 'blocks' in data else None)
+    if raw is not None:
+        return LabelDoc.from_json(raw)
+    return from_flat({**data, 'text': data.get('text', default_text)})
+
+
+def _png_data_url(image) -> str:
+    buffered = BytesIO()
+    image.save(buffered, format='PNG')
+    return 'data:image/png;base64,' + base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+
+def _has_content(doc: LabelDoc) -> bool:
+    return any(
+        isinstance(b, ImageBlock) or (isinstance(b, TextBlock) and b.text.strip())
+        for b in doc.blocks
+    )
+
+
+def _flat_for_history(doc: LabelDoc, copies: int) -> dict:
+    """Flat v1 view of a document, for the (unchanged this phase) history stack."""
+    texts = [b for b in doc.blocks if isinstance(b, TextBlock)]
+    first = texts[0] if texts else None
+    return {
+        'text': '\n'.join(b.text for b in texts),
+        'label_size': doc.label_size,
+        'font_size': pt_to_px(first.font_size_pt, 300) if first else DEFAULT_FONT_SIZE,
+        'align': first.align if first else 'center',
+        'copies': copies,
+    }
+
+
+@app.route('/fonts', methods=['GET'])
+def list_fonts():
+    """List the curated font families found on this host."""
+    return jsonify(fonts.list_fonts())
+
+
+@app.route('/icons', methods=['GET'])
+def list_icons():
+    """List the built-in icons."""
+    return jsonify(images.list_icons())
+
+
+@app.route('/images', methods=['POST'])
+def upload_image():
+    """Store an uploaded PNG, JPEG or SVG; returns its reference."""
+    upload = request.files.get('file')
+    if upload is None:
+        return jsonify({'success': False, 'error': 'No file provided'}), 400
+    try:
+        ref = images.store_upload(upload.read(), upload.filename or '')
+    except images.ImageTooLarge as e:
+        return jsonify({'success': False, 'error': str(e)}), 413
+    except images.UnsupportedImage as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    return jsonify({'success': True, 'ref': ref})
+
+
+@app.route('/images/<name>', methods=['GET'])
+def get_image(name: str):
+    """Serve a stored upload."""
+    try:
+        path = images.upload_path(name)
+    except images.ImageMissing:
+        return jsonify({'success': False, 'error': 'Image not found'}), 404
+    mimetype = {'png': 'image/png', 'jpg': 'image/jpeg', 'svg': 'image/svg+xml'}[name.rsplit('.', 1)[1]]
+    return send_file(path, mimetype=mimetype)
+
+
+@app.route('/render', methods=['POST'])
+def render_label():
+    """Render a label document; returns the PNG plus per-block layout results."""
+    try:
+        doc = _doc_from_request(request.get_json(silent=True) or {})
+        result = render(doc)
+        width_mm, height_mm = canvas_mm(doc)
+        keys = ('id', 'bbox_mm', 'overflow', 'font_substituted', 'missing')
+        return jsonify({
+            'success': True,
+            'image': _png_data_url(result.image),
+            'width_mm': width_mm,
+            'height_mm': height_mm,
+            'blocks': [{k: b[k] for k in keys} for b in result.blocks],
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+
+
 @app.route('/preview', methods=['POST'])
 def preview():
     """
-    Generate a preview of the label as a base64-encoded PNG image.
-    
+    Compatibility alias: preview a label from the old flat payload (or a doc).
+
     Returns the image data URL that can be directly used in an <img> src attribute.
     """
     try:
-        data = request.json
-        text = data.get('text', 'Sample Text')
-        label_size = data.get('label_size', DEFAULT_LABEL_SIZE)
-        font_size = int(data.get('font_size', DEFAULT_FONT_SIZE))
-        align = data.get('align', 'center')
-        
-        # Create label image
-        image = create_label_image(text, label_size, font_size, align)
-        
-        # Convert to base64
-        buffered = BytesIO()
-        image.save(buffered, format='PNG')
-        img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        
-        return jsonify({
-            'success': True,
-            'image': f'data:image/png;base64,{img_str}'
-        })
-        
+        doc = _doc_from_request(request.json, default_text='Sample Text')
+        return jsonify({'success': True, 'image': _png_data_url(render(doc).image)})
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
@@ -127,33 +215,34 @@ def preview():
 
 @app.route('/print', methods=['POST'])
 def print_label():
-    """Print a label with the specified parameters."""
+    """Print a label from a document (``{doc, copies}``) or the old flat payload."""
     try:
         data = request.json
-        text = data.get('text', '')
-        label_size = data.get('label_size', DEFAULT_LABEL_SIZE)
-        font_size = int(data.get('font_size', DEFAULT_FONT_SIZE))
-        align = data.get('align', 'center')
-        copies = int(data.get('copies', 1))
-        
-        if not text:
+        doc = _doc_from_request(data)
+        copies = int(data.get('copies', doc.copies))
+
+        if not _has_content(doc):
             return jsonify({'success': False, 'error': 'No text provided'}), 400
-        
-        # Create label image
-        image = create_label_image(text, label_size, font_size, align)
-        
-        # Print the label
-        job_id = printer_service.print_image(image, label_size, copies, 'Label')
+
+        result = render(doc)
+        for block in result.blocks:
+            if block['missing']:
+                return jsonify({
+                    'success': False,
+                    'error': f"Image missing for block {block['id']}",
+                }), 400
+
+        job_id = printer_service.print_image(result.image, doc.label_size, copies, 'Label')
 
         # Save to memory stack (dedup + move to top)
-        _save_label(data)
-        
+        _save_label(_flat_for_history(doc, copies))
+
         return jsonify({
             'success': True,
             'message': f'Print job {job_id} submitted successfully',
             'job_id': job_id
         })
-        
+
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except RuntimeError as e:

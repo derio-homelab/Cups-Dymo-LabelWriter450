@@ -1,0 +1,184 @@
+"""Routes: /fonts, /icons, /images, /render, /preview compat, /print with a doc."""
+
+import base64
+import importlib
+import io
+from pathlib import Path
+
+import pytest
+from PIL import Image
+
+from cups_dymo_label_printer import fonts
+
+FIXTURES = Path(__file__).parent / "fixtures" / "fonts"
+
+
+class _Printer:
+    def __init__(self):
+        self.calls = []
+
+    def print_image(self, image, label_size, copies=1, job_title="Label"):
+        self.calls.append((image.size, label_size, copies))
+        return 7
+
+
+@pytest.fixture()
+def client(monkeypatch, tmp_path):
+    monkeypatch.setenv("LABEL_FONT_DIRS", str(FIXTURES))
+    monkeypatch.setenv("LABEL_MEMORY_FILE", str(tmp_path / "saved_labels.json"))
+    monkeypatch.setenv("LABEL_IMAGE_DIR", str(tmp_path / "images"))
+    monkeypatch.setenv("LABEL_MAX_UPLOAD_MB", "1")
+    fonts.reset_cache()
+    import cups_dymo_label_printer.web_app as web_app
+    importlib.reload(web_app)
+    web_app.app.config["TESTING"] = True
+    web_app.printer_service = _Printer()
+    yield web_app.app.test_client(), web_app
+    fonts.reset_cache()
+
+
+def png_bytes():
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10), "black").save(buf, "PNG")
+    return buf.getvalue()
+
+
+def upload(client, data, name="a.png"):
+    return client.post("/images", data={"file": (io.BytesIO(data), name)},
+                       content_type="multipart/form-data")
+
+
+DOC = {
+    "label_size": "30252",
+    "blocks": [
+        {"type": "text", "id": "t1", "text": "Flour\nT55", "font_family": "Liberation Sans",
+         "font_size_pt": 14, "bold": True, "x_mm": 2, "y_mm": 2},
+        {"type": "image", "id": "i1", "src": "icon:star", "x_mm": 2, "y_mm": 40, "width_mm": 12},
+    ],
+}
+
+
+def test_fonts_lists_fixture_family(client):
+    c, _ = client
+    assert c.get("/fonts").get_json() == [
+        {"family": "Liberation Sans", "styles": ["regular", "bold"]}
+    ]
+
+
+def test_icons_lists_at_least_twenty(client):
+    c, _ = client
+    icons = c.get("/icons").get_json()
+    assert len(icons) >= 20
+    assert {"name", "url"} == set(icons[0])
+    assert c.get(icons[0]["url"]).status_code == 200
+
+
+def test_upload_roundtrip(client):
+    c, _ = client
+    resp = upload(c, png_bytes())
+    assert resp.status_code == 200
+    ref = resp.get_json()["ref"]
+    assert ref.startswith("upload:")
+    served = c.get("/images/" + ref.split(":", 1)[1])
+    assert served.status_code == 200
+    assert served.data == png_bytes()
+    assert served.mimetype == "image/png"
+
+
+def test_upload_over_limit_is_413(client):
+    c, _ = client
+    resp = upload(c, b"\x89PNG\r\n\x1a\n" + b"0" * (1024 * 1024 + 10))
+    assert resp.status_code == 413
+    assert resp.get_json()["success"] is False
+
+
+def test_upload_wrong_type_is_400(client):
+    c, _ = client
+    resp = upload(c, b"plain text", "a.txt")
+    assert resp.status_code == 400
+    assert resp.get_json()["success"] is False
+
+
+def test_upload_without_file_is_400(client):
+    c, _ = client
+    assert c.post("/images", data={}, content_type="multipart/form-data").status_code == 400
+
+
+def test_missing_image_is_404(client):
+    c, _ = client
+    assert c.get("/images/" + "0" * 64 + ".png").status_code == 404
+    assert c.get("/images/..%2Fsecret").status_code == 404
+
+
+def test_render_two_block_doc(client):
+    c, _ = client
+    resp = c.post("/render", json=DOC)
+    data = resp.get_json()
+    assert resp.status_code == 200 and data["success"] is True
+    assert (data["width_mm"], data["height_mm"]) == (28, 89)
+    assert data["image"].startswith("data:image/png;base64,")
+    png = Image.open(io.BytesIO(base64.b64decode(data["image"].split(",", 1)[1])))
+    assert png.mode == "1" and png.size == (int(28 * 300 / 25.4), int(89 * 300 / 25.4))
+    assert [b["id"] for b in data["blocks"]] == ["t1", "i1"]
+    for b in data["blocks"]:
+        assert set(b) == {"id", "bbox_mm", "overflow", "font_substituted", "missing"}
+        assert len(b["bbox_mm"]) == 4
+
+
+def test_render_accepts_doc_wrapper(client):
+    c, _ = client
+    assert c.post("/render", json={"doc": DOC}).get_json()["success"] is True
+
+
+def test_render_bad_stock_is_400(client):
+    c, _ = client
+    resp = c.post("/render", json=dict(DOC, label_size="BAD"))
+    assert resp.status_code == 400
+    assert "Unknown label size" in resp.get_json()["error"]
+
+
+def test_render_reports_missing_image(client):
+    c, _ = client
+    doc = {"label_size": "11354", "blocks": [
+        {"type": "image", "id": "gone", "src": "upload:" + "b" * 64 + ".png",
+         "x_mm": 1, "y_mm": 1, "width_mm": 10}]}
+    block = c.post("/render", json=doc).get_json()["blocks"][0]
+    assert block["missing"] is True
+
+
+def test_preview_flat_payload_still_works(client):
+    c, _ = client
+    resp = c.post("/preview", json={"text": "Hi\nthere", "label_size": "11354",
+                                    "font_size": 40, "align": "left"})
+    data = resp.get_json()
+    assert resp.status_code == 200
+    assert data["success"] is True and data["image"].startswith("data:image/png;base64,")
+
+
+def test_print_accepts_a_doc(client):
+    c, web_app = client
+    resp = c.post("/print", json={"doc": DOC, "copies": 2})
+    assert resp.status_code == 200
+    assert resp.get_json()["job_id"] == 7
+    size, label_size, copies = web_app.printer_service.calls[0]
+    assert (label_size, copies) == ("30252", 2)
+    assert size == (int(28 * 300 / 25.4), int(89 * 300 / 25.4))
+
+
+def test_print_doc_without_content_is_400(client):
+    c, _ = client
+    resp = c.post("/print", json={"doc": {"label_size": "11354", "blocks": [
+        {"type": "text", "text": "  "}]}})
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "No text provided"
+
+
+def test_print_doc_with_missing_image_is_400_naming_block(client):
+    c, web_app = client
+    doc = {"label_size": "11354", "blocks": [
+        {"type": "image", "id": "gone", "src": "upload:" + "c" * 64 + ".png",
+         "x_mm": 1, "y_mm": 1, "width_mm": 10}]}
+    resp = c.post("/print", json={"doc": doc})
+    assert resp.status_code == 400
+    assert "gone" in resp.get_json()["error"]
+    assert web_app.printer_service.calls == []
