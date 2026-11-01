@@ -1,0 +1,23 @@
+---
+
+name: Tests
+
+on: [push]
+
+jobs:
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-dejavu-core fonts-liberation libcairo2
+      - name: Install Python dependencies
+        run: pip install flask pillow cairosvg pytest pytest-cov pytest-mock
+      - name: Run tests
+        run: pytest
