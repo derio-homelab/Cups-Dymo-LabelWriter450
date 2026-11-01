@@ -219,8 +219,8 @@ rows:
       ui:
       - Cups-Dymo-LabelWriter450:scripts/capture_visual.py
     status: unwired
-    notes: verified by the Playwright capture (scripts/capture_visual.py), not run in
-      CI; this fr has no 'skipped' status, unwired is its equivalent
+    notes: 'Verified by scripts/capture_visual.py review_checks() (Playwright, local);
+      wiring it into CI is tracked in #7.'
     visual:
       states:
       - light mode
@@ -234,6 +234,8 @@ rows:
       - Ctrl/Cmd+P re-renders without the browser print dialog
       - copies stepper at 1 and 99 (limits)
       - reload restores last stock, font and orientation
+    issues:
+    - derio-homelab/Cups-Dymo-LabelWriter450#7
   - id: ldx-single-ui
     capability: label-ux
     acceptance: 'Only one web UI ships: the legacy web_app/ copy is gone.'
