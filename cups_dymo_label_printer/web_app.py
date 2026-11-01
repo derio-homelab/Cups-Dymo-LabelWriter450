@@ -175,7 +175,7 @@ def _print_and_record(doc: LabelDoc, label_id: Optional[str], result, saved=None
     }
     try:
         body['label'] = store.record_print(doc, label_id)
-    except (StoreError, LabelNotFound):
+    except Exception:  # the job is printed; any history error is only a warning
         log.exception('print job %s submitted but history not updated', job_id)
         body['label'] = saved
         body['warning'] = HISTORY_WARNING

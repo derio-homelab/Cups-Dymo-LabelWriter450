@@ -358,3 +358,22 @@ def test_thumbnail_cache_is_bounded(client, monkeypatch):
     for text in ("a", "b", "c"):
         c.get(f"/labels/{create(c, text)['id']}/thumbnail.png")
     assert len(web_app._THUMBNAILS) == 2
+
+
+# --- any post-print history error is a warning (p2-r6) ------------------------
+
+@pytest.mark.parametrize("route", ["/print", "/labels/{id}/print"])
+def test_unexpected_post_print_history_error_is_200_with_warning(client, monkeypatch, route):
+    c, web_app = client
+    label = create(c, "Hi")
+
+    def broken(*_args, **_kwargs):
+        raise TypeError("unexpected")
+
+    monkeypatch.setattr(web_app.store, "record_print", broken)
+    body = {"doc": doc("Hi")} if route == "/print" else {}
+    resp = c.post(route.format(id=label["id"]), json=body)
+    data = resp.get_json()
+    assert resp.status_code == 200, data
+    assert data["success"] is True and data["job_id"] == 9 and "warning" in data
+    assert len(web_app.printer_service.calls) == 1
