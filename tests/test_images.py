@@ -146,9 +146,8 @@ def test_load_refuses_over_pixel_budget_raster():
 
 def test_load_refuses_over_pixel_budget_svg():
     svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1000"><rect width="1" height="1000"/></svg>'
-    ref = images.store_upload(svg, "tall.svg")
-    with pytest.raises(images.ImageTooLarge):
-        images.load_image(ref, width_px=2000)
+    with pytest.raises(images.UnsupportedImage):    # refused already at upload
+        images.store_upload(svg, "tall.svg")
 
 
 NS = 'xmlns="http://www.w3.org/2000/svg"'
@@ -162,10 +161,10 @@ NS = 'xmlns="http://www.w3.org/2000/svg"'
     ("extreme aspect", f'<svg {NS} viewBox="0 0 1 60"><rect width="1" height="60"/></svg>'),
 ])
 def test_svg_shapes_are_refused_or_within_budget(name, svg):
-    ref = images.store_upload(svg.encode(), "x.svg")
     try:
+        ref = images.store_upload(svg.encode(), "x.svg")
         img = images.load_image(ref, width_px=3000)
-    except images.ImageTooLarge:
+    except (images.UnsupportedImage, images.ImageTooLarge):
         return
     assert img.width * img.height <= images.MAX_RENDER_PIXELS
 
@@ -175,3 +174,39 @@ def test_svg_output_size_is_fixed_by_us():
     ref = images.store_upload(svg.encode(), "x.svg")
     img = images.load_image(ref, width_px=100)
     assert img.size == (100, 100)   # cairosvg sizes the canvas from width/height, not viewBox
+
+
+def test_junk_svg_upload_refused():
+    with pytest.raises(images.UnsupportedImage):
+        images.store_upload(b"<svg this is not xml at all <<<", "x.svg")
+
+
+def test_raster_is_downscaled_before_rgba_convert(monkeypatch):
+    ref = images.store_upload(encoded("PNG", size=(2000, 1000)), "big.png")
+    seen = []
+    real = Image.Image.convert
+
+    def spy(self, mode=None, *a, **k):
+        if mode == "RGBA":
+            seen.append(self.width)
+        return real(self, mode, *a, **k)
+
+    monkeypatch.setattr(Image.Image, "convert", spy)
+    img = images.load_image(ref, width_px=100)
+    assert img.size == (100, 50)
+    assert seen and max(seen) <= 200
+
+
+def test_jpeg_uses_draft_mode(monkeypatch):
+    from PIL import JpegImagePlugin
+    ref = images.store_upload(encoded("JPEG", size=(2000, 1000)), "big.jpg")
+    calls = []
+    real = JpegImagePlugin.JpegImageFile.draft
+    monkeypatch.setattr(JpegImagePlugin.JpegImageFile, "draft",
+                        lambda self, *a, **k: calls.append(a) or real(self, *a, **k))
+    images.load_image(ref, width_px=100)
+    assert calls
+
+
+def test_pillow_global_bomb_limit_is_not_changed():
+    assert Image.MAX_IMAGE_PIXELS != images.MAX_UPLOAD_PIXELS

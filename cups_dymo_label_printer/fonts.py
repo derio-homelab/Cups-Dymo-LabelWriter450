@@ -145,16 +145,27 @@ def resolve(family: str, bold: bool = False, italic: bool = False) -> ResolvedFo
     return ResolvedFont(None, 'regular', True)
 
 
-def open_font(resolved: ResolvedFont, size_px: int) -> FontType:
-    if resolved.path:
-        try:
-            return ImageFont.truetype(resolved.path, size_px)
-        except OSError:
-            pass
+@functools.lru_cache(maxsize=128)
+def _truetype(path: str, size_px: int) -> FontType:
+    return ImageFont.truetype(path, size_px)
+
+
+@functools.lru_cache(maxsize=128)
+def _default_font(size_px: int) -> FontType:
     try:
         return ImageFont.load_default(size=size_px)
     except TypeError:  # Pillow < 10.1 has no sized default font
         return ImageFont.load_default()
+
+
+def open_font(resolved: ResolvedFont, size_px: int) -> FontType:
+    """Open (and cache by path and size) the resolved font."""
+    if resolved.path:
+        try:
+            return _truetype(resolved.path, size_px)
+        except OSError:
+            pass
+    return _default_font(size_px)
 
 
 def load(family: str, bold: bool, italic: bool, size_px: int) -> FontType:

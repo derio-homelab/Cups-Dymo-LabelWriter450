@@ -103,3 +103,10 @@ def test_load_returns_truetype_for_resolved_file(fixture_fonts):
     font = fonts.load("Liberation Sans", True, False, 40)
     assert isinstance(font, ImageFont.FreeTypeFont)
     assert font.size == 40
+
+
+def test_opened_fonts_are_cached(fixture_fonts):
+    a = fonts.load("Liberation Sans", True, False, 40)
+    b = fonts.load("Liberation Sans", True, False, 40)
+    assert a is b
+    assert fonts.load("Liberation Sans", True, False, 41) is not a

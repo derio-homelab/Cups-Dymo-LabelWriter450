@@ -240,3 +240,30 @@ def test_svg_external_references_are_not_fetched(client, tmp_path):
     from cups_dymo_label_printer import images
     img = images.load_image(ref, 20)
     assert img.getpixel((10, 10)) == (255, 255, 255)   # nothing was loaded
+
+
+@pytest.mark.parametrize("value", ["Infinity", "NaN", "1e300"])
+def test_render_rejects_hostile_numbers_with_400(client, value):
+    c, _ = client
+    body = ('{"label_size": "11354", "blocks": [{"type": "text", "text": "a", "x_mm": %s}]}'
+            % value)
+    resp = c.post("/render", data=body, content_type="application/json")
+    assert resp.status_code == 400
+
+
+@pytest.mark.parametrize("field,value", [("bold", 1), ("font_family", 7), ("id", [1])])
+def test_render_rejects_wrong_types_with_400(client, field, value):
+    c, _ = client
+    doc = {"label_size": "11354", "blocks": [{"type": "text", "text": "a", field: value}]}
+    assert c.post("/render", json=doc).status_code == 400
+
+
+def test_hostile_text_doc_never_500(client):
+    import time
+    blocks = [{"type": "text", "id": f"b{i}", "text": "\n".join(["W" * 10] * 50),
+               "font_size_pt": 286, "y_mm": 0, "font_family": "Liberation Sans"}
+              for i in range(30)]
+    start = time.monotonic()
+    resp = c = client[0].post("/render", json={"label_size": "30323", "blocks": blocks})
+    assert time.monotonic() - start < 2
+    assert resp.status_code in (200, 400)

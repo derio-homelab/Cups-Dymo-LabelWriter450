@@ -140,3 +140,30 @@ def test_size_caps_boundaries_ok():
     LabelDoc.from_json(_doc(blocks=[{"type": "text", "text": "x" * 2000}]))
     LabelDoc.from_json(_doc(blocks=[{"type": "text", "text": "\n" * 49}]))
     LabelDoc.from_json(_doc(blocks=[{"type": "text", "text": "a"}] * 30))
+
+
+@pytest.mark.parametrize("bad", [
+    {"type": "text", "text": "a", "font_size_pt": float("inf")},
+    {"type": "text", "text": "a", "x_mm": float("nan")},
+    {"type": "text", "text": "a", "x_mm": 1e300},
+    {"type": "text", "text": "a", "y_mm": -500},
+    {"type": "text", "text": "a", "width_mm": 1e300},
+    {"type": "text", "text": "a", "font_family": ["x"]},
+    {"type": "text", "text": "a", "id": 5},
+    {"type": "text", "text": "a", "bold": 1},
+    {"type": "text", "text": "a", "italic": "yes"},
+    {"type": "text", "text": "a", "underline": None},
+    {"type": "text", "text": "a", "shrink_to_fit": 0},
+    {"type": "image", "src": "icon:x", "id": []},
+    {"type": "image", "src": "icon:x", "threshold": float("nan")},
+    {"type": "image", "src": "icon:x", "x_mm": 1e300},
+])
+def test_non_finite_out_of_range_and_wrong_types_rejected(bad):
+    with pytest.raises(ValueError):
+        LabelDoc.from_json(_doc(blocks=[bad]))
+
+
+@pytest.mark.parametrize("copies", [float("inf"), float("nan"), "x"])
+def test_bad_copies_rejected(copies):
+    with pytest.raises(ValueError):
+        LabelDoc.from_json(_doc(copies=copies))

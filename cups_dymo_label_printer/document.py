@@ -7,6 +7,7 @@ Coordinates are millimetres from the top-left of the label *as designed*
 """
 
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
@@ -42,9 +43,20 @@ def _number(value: Any, name: str, *, positive: bool = False,
         return None
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{name} must be a number")
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be finite")
     if positive and value <= 0:
         raise ValueError(f"{name} must be positive")
     return value
+
+
+def _check_types(block: Any, bools: tuple, strs: tuple) -> None:
+    for name in strs:
+        if not isinstance(getattr(block, name), str):
+            raise ValueError(f"{name} must be a string")
+    for name in bools:
+        if not isinstance(getattr(block, name), bool):
+            raise ValueError(f"{name} must be a boolean")
 
 
 @dataclass
@@ -64,6 +76,8 @@ class TextBlock:
     type: str = field(default='text', init=False)
 
     def validate(self) -> None:
+        _check_types(self, bools=('bold', 'italic', 'underline', 'shrink_to_fit'),
+                     strs=('id', 'font_family'))
         if self.align not in ALIGNMENTS:
             raise ValueError(f"Unknown alignment: {self.align}")
         _number(self.font_size_pt, 'font_size_pt', positive=True)
@@ -100,6 +114,7 @@ class ImageBlock:
     type: str = field(default='image', init=False)
 
     def validate(self) -> None:
+        _check_types(self, bools=(), strs=('id',))
         if not isinstance(self.src, str) or not self.src:
             raise ValueError("image src is required")
         if self.mono not in MONO_MODES:
@@ -142,7 +157,7 @@ def _block_from_json(raw: Any, index: int) -> Block:
         raise ValueError(f"Unknown block type: {kind}")
     names = set(cls.__dataclass_fields__) - {'type'}
     block = cls(**{k: v for k, v in raw.items() if k in names})
-    if not block.id:
+    if block.id is None or block.id == "":
         block.id = f"b{index + 1}"
     block.validate()
     return block
@@ -173,7 +188,7 @@ class LabelDoc:
             raise ValueError(f"a label may hold at most {MAX_BLOCKS} blocks")
         try:
             copies = int(raw.get('copies', 1))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise ValueError("copies must be an integer") from None
         doc = cls(
             label_size=label_size,
@@ -187,6 +202,10 @@ class LabelDoc:
             if isinstance(block, ImageBlock) and block.width_mm > long_edge:
                 raise ValueError(f"width_mm must not exceed the label's long edge ({long_edge} mm)")
             _check_font_cap(block, long_edge)
+            for name in ('x_mm', 'y_mm', 'width_mm'):
+                value = getattr(block, name)
+                if value is not None and abs(value) > 2 * long_edge:
+                    raise ValueError(f"{name} is out of range")
         return doc
 
     def to_json(self) -> dict:

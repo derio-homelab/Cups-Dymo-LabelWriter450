@@ -27,6 +27,7 @@ AlignmentType = Literal['left', 'center', 'right']
 
 MIN_SHRINK_PT = 6
 SHRINK_ITERATIONS = 12
+TEXT_RASTER_BUDGET_FACTOR = 4   # per block: sum(line px area) <= 4 x canvas area
 TEXT_THRESHOLD = 128
 
 
@@ -49,6 +50,7 @@ class TextLayout:
     descent: int
     box: tuple               # (x, y, w, h) in px
     overflow: bool
+    over_budget: bool = False
 
 
 def _mm_to_px(mm: float, dpi: int) -> float:
@@ -67,7 +69,7 @@ def _layout_text_block(block: TextBlock, canvas_px: tuple, dpi: int,
     widths = [font.getlength(line) for line in lines]
     box_x = _mm_to_px(block.x_mm, dpi)
     if block.width_mm is None:
-        box_w = canvas_w - 2 * _mm_to_px(DEFAULT_MARGIN_MM, dpi)
+        box_w = max(1.0, canvas_w - box_x - _mm_to_px(DEFAULT_MARGIN_MM, dpi))
     else:
         box_w = _mm_to_px(block.width_mm, dpi)
     total_h = line_h * len(lines)
@@ -86,14 +88,23 @@ def _layout_text_block(block: TextBlock, canvas_px: tuple, dpi: int,
             x = box_x + (box_w - width) / 2
         positions.append((x, box_y + i * line_h))
 
+    over_budget = (
+        sum(widths) * line_h > TEXT_RASTER_BUDGET_FACTOR * canvas_w * canvas_h
+    )
     overflow = (
-        max(widths) > box_w + 0.5
+        over_budget
+        or max(widths) > box_w + 0.5
         or total_h > canvas_h + 0.5
         or box_y < -0.5
         or box_y + total_h > canvas_h + 0.5
+        or box_x < -0.5
+        or box_x + box_w > canvas_w + 0.5
+        or min(x for x, _ in positions) < -0.5
+        or max(x + w for (x, _), w in zip(positions, widths)) > canvas_w + 0.5
     )
     return TextLayout(lines, positions, widths, font, resolved, size_pt,
-                      ascent, descent, (box_x, box_y, box_w, total_h), overflow)
+                      ascent, descent, (box_x, box_y, box_w, total_h), overflow,
+                      over_budget)
 
 
 def _fit_text_block(block: TextBlock, canvas_px: tuple, dpi: int) -> TextLayout:
@@ -119,9 +130,17 @@ def _fit_text_block(block: TextBlock, canvas_px: tuple, dpi: int) -> TextLayout:
     return best
 
 
-def _draw_text(draw: ImageDraw.ImageDraw, block: TextBlock, layout: TextLayout) -> None:
+def _draw_text(draw: ImageDraw.ImageDraw, block: TextBlock, layout: TextLayout,
+               canvas_px: tuple) -> None:
+    """Draw visible lines only; an over-budget block is not drawn at all."""
+    if layout.over_budget:
+        return
+    canvas_w, canvas_h = canvas_px
+    line_h = layout.ascent + layout.descent
     thickness = max(1, round(layout.font.size / 15)) if hasattr(layout.font, 'size') else 1
     for line, (x, y), width in zip(layout.lines, layout.positions, layout.widths):
+        if x + width < 0 or x > canvas_w or y + line_h < 0 or y > canvas_h:
+            continue    # wholly off-canvas
         draw.text((x, y), line, fill=0, font=layout.font)
         if block.underline and line:
             line_y = y + layout.ascent + layout.descent / 2
@@ -143,8 +162,10 @@ def _draw_image(canvas: Image.Image, block: ImageBlock, dpi: int) -> dict:
     except images.ImageMissing:
         result['missing'] = True
         return result
-    canvas.paste(mono.convert('L'), (round(_mm_to_px(block.x_mm, dpi)),
-                                     round(_mm_to_px(block.y_mm, dpi))))
+    left, top = round(_mm_to_px(block.x_mm, dpi)), round(_mm_to_px(block.y_mm, dpi))
+    canvas.paste(mono.convert('L'), (left, top))
+    result['overflow'] = (left < 0 or top < 0 or left + mono.width > canvas.width
+                          or top + mono.height > canvas.height)
     result['bbox_mm'] = _bbox_mm((_mm_to_px(block.x_mm, dpi), _mm_to_px(block.y_mm, dpi),
                                   mono.width, mono.height), dpi)
     return result
@@ -161,7 +182,7 @@ def render(doc: LabelDoc, dpi: int = DEFAULT_DPI) -> RenderResult:
     for block in doc.blocks:
         if isinstance(block, TextBlock):
             layout = _fit_text_block(block, canvas_px, dpi)
-            _draw_text(draw, block, layout)
+            _draw_text(draw, block, layout, canvas_px)
             results.append({
                 'id': block.id,
                 'bbox_mm': _bbox_mm(layout.box, dpi),

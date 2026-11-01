@@ -172,3 +172,51 @@ def test_shrink_to_fit_is_a_bounded_search(monkeypatch):
     size = result.blocks[0]["size_pt"]
     probe = render(doc_of(text_block("Hello World", font_size_pt=size + 1)))
     assert probe.blocks[0]["overflow"] is True
+
+
+def test_hostile_doc_renders_fast_without_exceptions(client_app=None):
+    import time
+    blocks = [text_block("\n".join(["W" * 10] * 50), id=f"b{i}", font_size_pt=286, y_mm=0)
+              for i in range(30)]
+    doc = doc_of(*blocks, label_size="30323")
+    start = time.monotonic()
+    result = render(doc)
+    assert time.monotonic() - start < 2
+    assert all(b["overflow"] for b in result.blocks)
+    assert dark(result.image) == 0       # over-budget blocks are not drawn
+
+
+def test_offcanvas_lines_are_skipped(monkeypatch):
+    from cups_dymo_label_printer import label_generator as lg
+    drawn = []
+    real = lg.ImageDraw.ImageDraw.text
+    monkeypatch.setattr(lg.ImageDraw.ImageDraw, "text",
+                        lambda self, xy, *a, **k: drawn.append(xy) or real(self, xy, *a, **k))
+    # 3 lines, the box starts far below the canvas bottom: nothing visible
+    render(doc_of(text_block("a\nb\nc", y_mm=100)))
+    assert drawn == []
+
+
+@pytest.mark.parametrize("x_mm", [50, -30])
+def test_horizontal_extent_flags_overflow(x_mm):
+    result = render(doc_of(text_block("Hello", x_mm=x_mm, align="left")))
+    assert result.blocks[0]["overflow"] is True
+
+
+def test_centered_block_straddling_left_edge_overflows():
+    assert render(doc_of(text_block("Hi", x_mm=-30, align="center"))).blocks[0]["overflow"] is True
+
+
+def test_default_width_is_canvas_minus_x_minus_margin():
+    result = render(doc_of(text_block("Hi", x_mm=20)))
+    x, _, w, _ = result.blocks[0]["bbox_mm"]
+    assert x == pytest.approx(20, abs=0.1)
+    assert w == pytest.approx(57 - 20 - 2, abs=0.1)
+
+
+def test_image_leaving_canvas_overflows():
+    inside = {"type": "image", "id": "i", "src": "icon:star", "x_mm": 5, "y_mm": 5, "width_mm": 15}
+    assert render(doc_of(inside)).blocks[0]["overflow"] is False
+    for x, y in ((50, 5), (5, 25), (-5, 5)):
+        out = dict(inside, x_mm=x, y_mm=y)
+        assert render(doc_of(out)).blocks[0]["overflow"] is True

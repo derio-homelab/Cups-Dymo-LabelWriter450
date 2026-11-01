@@ -22,8 +22,6 @@ CACHE_LIMIT = 64
 MAX_RENDER_PIXELS = 4_000_000     # budget for one rasterized/resized image
 MAX_UPLOAD_PIXELS = 25_000_000    # decoded size cap for uploaded PNG/JPEG
 
-Image.MAX_IMAGE_PIXELS = MAX_UPLOAD_PIXELS
-
 _UPLOAD_RE = re.compile(r'^upload:([0-9a-f]{64}\.(?:png|jpg|svg))$')
 _ICON_RE = re.compile(r'^icon:([a-z0-9-]+)$')
 
@@ -83,6 +81,11 @@ def store_upload(data: bytes, filename: str = '') -> str:
             raise UnsupportedImage('Image could not be read') from exc
         if too_big:
             raise UnsupportedImage('Image dimensions are too large')
+    else:
+        try:   # a stored SVG must be rasterizable at all
+            _svg_to_png(data, '', output_width=SVG_PROBE_WIDTH)
+        except (ImageMissing, ImageTooLarge) as exc:
+            raise UnsupportedImage('SVG could not be rendered') from exc
     name = f'{hashlib.sha256(data).hexdigest()}.{ext}'
     directory = image_dir()
     os.makedirs(directory, exist_ok=True)
@@ -168,9 +171,16 @@ def load_image(ref: str, width_px: int) -> Image.Image:
         data = _rasterize_svg(data, width_px, ref)
     try:
         img = Image.open(io.BytesIO(data))
+        if img.width * img.height > MAX_UPLOAD_PIXELS:   # scoped bomb guard, before decode
+            raise ImageTooLarge('Image dimensions are too large')
         if not is_svg:
             _check_budget(width_px, width_px * img.height / img.width)
+            # decode no larger than needed: JPEG draft mode, then an integer reduce
+            img.draft('RGB', (width_px * 2, max(1, width_px * 2 * img.height // img.width)))
         img.load()
+        factor = img.width // (2 * width_px)
+        if not is_svg and factor >= 2:
+            img = img.reduce(factor)
     except ImageTooLarge:
         raise
     except Exception as exc:
