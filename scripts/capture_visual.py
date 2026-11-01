@@ -23,7 +23,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / 'scripts' / 'tmp' / 'visual'
+OUT = (ROOT / (os.environ.get('VISUAL_OUT') or 'scripts/tmp/visual')).resolve()
 SERVER_CMD = [
     'uv', 'run', '--no-project', '--with', 'flask', '--with', 'pillow', '--with', 'cairosvg',
     '--with', 'matplotlib', 'python', str(ROOT / 'scripts' / 'dev_server.py'),
@@ -211,7 +211,7 @@ def live_preview(browser, base):
     handle = page.locator('[data-testid=handle]:visible')
     drag(page, handle, 600, 0)
     width = data(page, 'd.doc.blocks[0].width_mm')
-    assert width == data(page, 'd.canvasW') == 32, width
+    assert width == 31.8 and data(page, 'd.info("b1").overflow') is False, width  # max scale leaves a 0.2 mm margin (p3-r18)
     cap.shot('preview-10-scale-limit', ['scale an image by its corner handle to the label width (limit)'])
 
     # arrow-key nudge
@@ -532,6 +532,7 @@ def review_checks(browser, base):
     settle(page)
     drag(page, page.locator('[data-testid=handle]:visible'), 900, 0)
     w, h = js('d.doc.blocks[0].width_mm'), js('d.info("b1").bbox_mm[3]')
+    assert js('d.info("b1").overflow') is False, 'scaling to the maximum must not trip overflow (p3-r18)'
     assert w <= js('d.canvasH') + 0.01 and h <= js('d.canvasH') + 0.01, (w, h)
     fb, hb = page.locator('[data-testid=frame]').bounding_box(), page.locator('[data-testid=handle]:visible').bounding_box()
     assert hb['x'] + hb['width'] <= fb['x'] + fb['width'] + 0.5 and hb['y'] + hb['height'] <= fb['y'] + fb['height'] + 0.5
@@ -578,6 +579,82 @@ def review_checks(browser, base):
     page.click('[aria-label="Add icon leaf"]')
     settle(page)
     assert js('d.doc.blocks[1].y_mm') > 2
+
+
+    # p3-r13: the default single auto-centred text leaves room; a new icon overlaps nothing
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Solo', 14)
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon star"]')
+    settle(page)
+    t, i = js('d.info("b1").bbox_mm'), js('d.info("b2").bbox_mm')
+    assert (t[0] + t[2] <= i[0] or i[0] + i[2] <= t[0] or t[1] + t[3] <= i[1] or i[1] + i[3] <= t[1]), (t, i)
+    assert js('d.info("b2").overflow') is False and i[2] >= 5
+
+    # p3-r17: the confirm dialog takes focus, traps Tab, and gives focus back
+    open_app(page, base, '11354', 'landscape')
+    page.wait_for_selector('.label-row')
+    page.locator('.label-row').first.locator('.row-check').check()
+    page.click('[data-testid=h-delete]')
+    page.wait_for_selector('[data-testid=modal]:visible')
+    page.wait_for_function("() => document.querySelector('[role=alertdialog]').contains(document.activeElement)")
+    for key in ('Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab'):
+        page.keyboard.press(key)
+        assert page.evaluate("() => document.querySelector('[role=alertdialog]').contains(document.activeElement)"), key
+    page.keyboard.press('Escape')
+    page.wait_for_selector('[data-testid=modal]', state='hidden')
+    page.wait_for_function("() => document.activeElement && document.activeElement.dataset.testid === 'h-delete'")
+    page.locator('.label-row').first.locator('.row-check').uncheck()
+
+    # p3-r19: at most two toasts, and they stay clear of the toolbar and the row buttons
+    row = page.locator('.label-row').first
+    for _ in range(3):
+        row.locator('[data-testid=h-reprint]').click()
+        page.wait_for_timeout(150)
+    assert page.locator('[data-testid=toast]').count() <= 2
+    boxes = [b.bounding_box() for b in page.locator('.toolbar button, .row-actions button').all() if b.is_visible()]
+    for t in page.locator('[data-testid=toast]').all():
+        tb = t.bounding_box()
+        for r in boxes:
+            assert not (tb['x'] < r['x'] + r['width'] and r['x'] < tb['x'] + tb['width']
+                        and tb['y'] < r['y'] + r['height'] and r['y'] < tb['y'] + tb['height']), 'toast covers a control'
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.toasts')).pointerEvents") == 'none'
+
+    # p3-r20: landscape -> portrait after a nudge leaves nothing off the label
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Auto', 14)
+    overlay(page).focus()
+    for _ in range(4):
+        page.keyboard.press('ArrowRight')
+    page.click('[data-testid=orientation]')
+    settle(page)
+    assert js('d.canvasW') == 32 and js('d.info("b1").overflow') is False, js('d.info("b1")')
+    page.click('[data-testid=orientation]')
+    settle(page)
+
+    # p3-r21: history actions are disabled while busy; deleting the edited label bumps the generation
+    open_app(page, base, '11354', 'landscape')
+    page.wait_for_selector('.label-row')
+    page.locator('.label-row').first.locator('.row-check').check()
+    add_text(page, 'Busy', 14)
+    state = page.evaluate("""async () => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const p = d.print();
+        await Alpine.nextTick();
+        const out = ['h-reprint', 'h-star', 'h-delete'].map(t => [...document.querySelectorAll('[data-testid=' + t + ']')]
+            .filter(b => b.offsetParent).every(b => b.disabled));
+        await p;
+        return out;
+    }""")
+    assert state == [True, True, True], state
+    bumped = page.evaluate("""async (id) => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const g = d.gen;
+        d.editingId = id;
+        await d.doDelete([id]);
+        return d.gen > g && d.editingId === null;
+    }""", other['id'])
+    assert bumped
 
     # p3-r10: a failing history shows a friendly message and no empty-state text
     page.route('**/labels?*', lambda r: r.abort())

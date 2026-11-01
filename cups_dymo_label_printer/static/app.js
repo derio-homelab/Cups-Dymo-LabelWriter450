@@ -6,8 +6,10 @@
     var STATUS_MS = 15000;
     var NUDGE_MM = 0.5;
     var KEEP_ON_LABEL_MM = 1;
+    var MARGIN_MM = 2;
     var MIN_IMAGE_MM = 2;
     var DRAG_SLOP_PX = 4;
+    var EDGE_MARGIN_MM = 0.2;  // keeps a max-scaled image off the pixel grid's edge
     var KEY_STOCK = 'ldx.stock';
     var KEY_FONT = 'ldx.font';
     var KEY_ORIENTATION = 'ldx.orientation';
@@ -76,6 +78,7 @@
             busy: false,
             gen: 0,
             modal: null,
+            modalOpener: null,
             seq: 0,
             timer: null,
             stageW: 600,
@@ -270,17 +273,47 @@
                 this.selected = block.id;
             },
 
-            addImage: function (src) {
-                var width = round2(Math.min(20, this.canvasW / 2));
-                var y = this.nextY();
-                if (y === null || y + width > this.canvasH - 1) {
-                    // no room below the other blocks: start at the top, small enough to stay on the label
-                    y = 2;
-                    width = round2(Math.max(MIN_IMAGE_MM, Math.min(width, this.canvasH - 4)));
+            blockBoxes: function () {
+                var self = this, out = [];
+                this.doc.blocks.forEach(function (b) {
+                    var i = self.info(b.id);
+                    if (i) { out.push(i.bbox_mm); }
+                });
+                return out;
+            },
+
+            fits: function (boxes, x, y, size) {
+                if (x < 0 || y < 0 || x + size > this.canvasW || y + size > this.canvasH) { return false; }
+                return boxes.every(function (b) {
+                    return x + size <= b[0] || b[0] + b[2] <= x || y + size <= b[1] || b[1] + b[3] <= y;
+                });
+            },
+
+            // A square spot that overlaps no rendered block: right of them, then below, then anywhere.
+            freeSpot: function (want) {
+                var boxes = this.blockBoxes();
+                if (!boxes.length) { return { x: 2, y: 2, size: want }; }
+                var right = Math.max.apply(null, boxes.map(function (b) { return b[0] + b[2]; })) + 1;
+                var bottom = Math.max.apply(null, boxes.map(function (b) { return b[1] + b[3]; })) + 1;
+                for (var size = want; size >= 5; size -= 1) {
+                    var tries = [[right, 2], [2, bottom]];
+                    for (var gx = 0; gx <= this.canvasW; gx += 1) {
+                        for (var gy = 0; gy <= this.canvasH; gy += 1) { tries.push([gx, gy]); }
+                    }
+                    for (var k = 0; k < tries.length; k++) {
+                        if (this.fits(boxes, tries[k][0], tries[k][1], size)) {
+                            return { x: round2(tries[k][0]), y: round2(tries[k][1]), size: size };
+                        }
+                    }
                 }
+                return { x: round2(Math.max(0, this.canvasW - 5)), y: 2, size: 5 };
+            },
+
+            addImage: function (src) {
+                var spot = this.freeSpot(round2(Math.min(20, this.canvasW / 2, this.canvasH - 2)));
                 var block = {
-                    type: 'image', id: this.nextId(), src: src, x_mm: 2, y_mm: y,
-                    width_mm: width, mono: 'threshold', threshold: 128
+                    type: 'image', id: this.nextId(), src: src, x_mm: spot.x, y_mm: spot.y,
+                    width_mm: spot.size, mono: 'threshold', threshold: 128
                 };
                 this.doc.blocks.push(block);
                 this.selected = block.id;
@@ -339,15 +372,42 @@
                 if (el) { el.value = this.doc.copies; }
             },
 
+            // After the canvas changes size, pull every block back onto it.
+            fitToCanvas: function () {
+                var W = this.canvasW, H = this.canvasH, self = this;
+                this.doc.blocks.forEach(function (b) {
+                    var i = self.info(b.id);
+                    if (b.type === 'image') {
+                        var aspect = i && i.bbox_mm[2] > 0 ? i.bbox_mm[3] / i.bbox_mm[2] : 1;
+                        b.width_mm = round2(Math.max(MIN_IMAGE_MM, Math.min(b.width_mm, W - EDGE_MARGIN_MM, (H - EDGE_MARGIN_MM) / aspect)));
+                        b.x_mm = round2(clamp(b.x_mm, 0, Math.max(0, W - b.width_mm)));
+                        b.y_mm = round2(clamp(b.y_mm, 0, Math.max(0, H - b.width_mm * aspect)));
+                    } else {
+                        if (b.width_mm !== null && b.width_mm !== undefined) {
+                            b.width_mm = round2(Math.max(1, Math.min(b.width_mm, W - 2 * MARGIN_MM)));
+                            b.x_mm = round2(clamp(b.x_mm, 0, Math.max(0, W - b.width_mm - EDGE_MARGIN_MM)));
+                        } else {
+                            b.x_mm = round2(clamp(b.x_mm, 0, Math.max(0, W - 2 * MARGIN_MM)));
+                        }
+                        if (b.y_mm !== null && b.y_mm !== undefined) {
+                            var h = i ? i.bbox_mm[3] : 5;
+                            b.y_mm = round2(clamp(b.y_mm, 0, Math.max(0, H - h)));
+                        }
+                    }
+                });
+            },
+
             onStockChange: function () {
                 storeSet(KEY_STOCK, this.doc.label_size);
                 if (!this.orientationChosen) { this.doc.orientation = this.shapeOf(this.doc.label_size); }
+                this.fitToCanvas();
             },
 
             toggleOrientation: function () {
                 this.doc.orientation = this.doc.orientation === 'portrait' ? 'landscape' : 'portrait';
                 this.orientationChosen = true;
                 storeSet(KEY_ORIENTATION, this.doc.orientation);
+                this.fitToCanvas();
             },
 
             setTheme: function (theme) {
@@ -363,21 +423,32 @@
             /* ---- confirmation dialog (in-page, never window.confirm) ---- */
 
             askConfirm: function (title, text, confirm, action) {
+                this.modalOpener = document.activeElement;
                 this.modal = { title: title, text: text, confirm: confirm, action: action };
                 var self = this;
-                this.$nextTick(function () {
+                // focus once the dialog is actually displayed
+                setTimeout(function () {
                     var b = self.$refs.modalCancel;
-                    if (b) { b.focus(); }
-                });
+                    if (b && self.modal) { b.focus(); }
+                }, 30);
+            },
+
+            leaveModal: function () {
+                this.modal = null;
+                var opener = this.modalOpener;
+                this.modalOpener = null;
+                if (opener && document.contains(opener) && !opener.disabled && opener.focus) {
+                    setTimeout(function () { opener.focus(); }, 0);
+                }
             },
 
             closeModal: function () {
-                this.modal = null;
+                this.leaveModal();
             },
 
             acceptModal: function () {
                 var action = this.modal && this.modal.action;
-                this.modal = null;
+                this.leaveModal();
                 if (action) { action(); }
             },
 
@@ -386,7 +457,11 @@
                 var items = box ? box.querySelectorAll('button') : [];
                 if (!items.length) { return; }
                 var first = items[0], last = items[items.length - 1];
-                if (event.shiftKey && document.activeElement === first) {
+                var inside = box.contains(document.activeElement);
+                if (!inside) {
+                    event.preventDefault();
+                    (event.shiftKey ? last : first).focus();
+                } else if (event.shiftKey && document.activeElement === first) {
                     event.preventDefault();
                     last.focus();
                 } else if (!event.shiftKey && document.activeElement === last) {
@@ -455,7 +530,7 @@
                 var i = this.info(b.id);
                 var aspect = i && i.bbox_mm[2] > 0 ? i.bbox_mm[3] / i.bbox_mm[2] : 1;
                 var room = Math.min(this.canvasW - Math.max(0, b.x_mm), (this.canvasH - Math.max(0, b.y_mm)) / aspect);
-                return Math.max(MIN_IMAGE_MM, Math.min(this.canvasW, room));
+                return Math.max(MIN_IMAGE_MM, round2(Math.min(this.canvasW, room) - EDGE_MARGIN_MM));
             },
 
             setImageWidth: function (b, value, el) {
@@ -706,7 +781,10 @@
             /* ---- keyboard ---- */
 
             onKey: function (event) {
-                if (this.modal) { return; }
+                if (this.modal) {
+                    if (event.key === 'Tab') { this.trapTab(event); }
+                    return;
+                }
                 var mod = event.ctrlKey || event.metaKey;
                 if (mod && event.key === 'Enter') {
                     event.preventDefault();
@@ -823,7 +901,7 @@
                 var self = this;
                 var id = ++this.toastSeq;
                 this.toasts.push({ id: id, kind: kind, text: text });
-                if (this.toasts.length > 4) { this.toasts.shift(); }
+                while (this.toasts.length > 2) { this.toasts.shift(); }
                 setTimeout(function () { self.dismiss(id); }, kind === 'error' ? 9000 : 5000);
             },
 
@@ -954,7 +1032,7 @@
             async doDelete(ids) {
                 try {
                     var body = await api('/labels', jsonRequest('DELETE', { ids: ids }));
-                    if (ids.indexOf(this.editingId) >= 0) { this.editingId = null; }
+                    if (ids.indexOf(this.editingId) >= 0) { this.gen += 1; this.editingId = null; }
                     this.history.selected = [];
                     this.toast('success', 'Deleted ' + body.deleted + (body.deleted === 1 ? ' label' : ' labels'));
                     await this.loadHistory();

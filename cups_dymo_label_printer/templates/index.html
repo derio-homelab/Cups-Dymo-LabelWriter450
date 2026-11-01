@@ -318,7 +318,7 @@
                     Select all
                 </label>
                 <button type="button" class="btn danger" data-testid="h-delete"
-                        :disabled="!history.selected.length" @click="deleteSelected()">
+                        :disabled="busy || !history.selected.length" @click="deleteSelected()">
                     Delete selected<span x-show="history.selected.length" x-text="' (' + history.selected.length + ')'"></span>
                 </button>
             </div>
@@ -340,13 +340,13 @@
                             <span class="muted" x-text="l.label_size + ' - ' + l.orientation + (l.print_count ? ' - printed ' + l.print_count + 'x' : '')"></span>
                         </div>
                         <div class="row-actions">
-                            <button type="button" class="btn small star" data-testid="h-star"
+                            <button type="button" class="btn small star" data-testid="h-star" :disabled="busy"
                                     :aria-pressed="l.starred ? 'true' : 'false'"
                                     :aria-label="(l.starred ? 'Unstar ' : 'Star ') + nm(l)"
                                     @click="toggleStar(l)"><span aria-hidden="true" x-text="l.starred ? '★' : '☆'"></span></button>
                             <button type="button" class="btn small" data-testid="h-open" :disabled="busy" @click="openLabel(l)">Open</button>
                             <button type="button" class="btn small" data-testid="h-dup" :disabled="busy" @click="duplicateLabel(l)">Duplicate</button>
-                            <button type="button" class="btn small" data-testid="h-reprint" @click="reprint(l)">Re-print</button>
+                            <button type="button" class="btn small" data-testid="h-reprint" :disabled="busy" @click="reprint(l)">Re-print</button>
                         </div>
                     </li>
                 </template>
@@ -356,7 +356,7 @@
 
     <div class="modal-backdrop" x-show="modal" x-cloak data-testid="modal" @keydown.escape.window="modal && closeModal()">
         <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-text"
-             x-ref="modalBox" @keydown.tab="trapTab($event)">
+             x-ref="modalBox" >
             <h2 id="modal-title" class="h2" x-text="modal ? modal.title : ''"></h2>
             <p id="modal-text" x-text="modal ? modal.text : ''"></p>
             <div class="modal-actions">

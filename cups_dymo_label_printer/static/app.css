@@ -367,7 +367,7 @@ textarea { resize: vertical; width: 100%; }
 
 .toasts {
     position: fixed;
-    top: 8px;
+    bottom: 10px;
     left: 50%;
     transform: translateX(-50%);
     width: min(420px, calc(100vw - 16px));
