@@ -267,8 +267,18 @@ def _request_doc() -> LabelDoc:
     return LabelDoc.from_json(data.get('doc', data))
 
 
+def _json_object() -> dict:
+    """The request's JSON body as an object; no body is ``{}``, anything else a 400."""
+    data = request.get_json(silent=True)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError('Request body must be a JSON object')
+    return data
+
+
 def _ids_from_request() -> list:
-    ids = (request.get_json(silent=True) or {}).get('ids', [])
+    ids = _json_object().get('ids', [])
     if not isinstance(ids, list):
         raise ValueError('ids must be a list')
     return [str(i) for i in ids]
@@ -327,7 +337,7 @@ def duplicate_label(label_id: str):
 @app.route('/labels/<label_id>/star', methods=['PUT'])
 @_label_route
 def star_label(label_id: str):
-    starred = (request.get_json(silent=True) or {}).get('starred')
+    starred = _json_object().get('starred')
     if not isinstance(starred, bool):
         raise ValueError('starred must be a boolean')
     return jsonify({'success': True, 'label': store.set_star(label_id, starred)})
@@ -339,7 +349,7 @@ def reprint_label(label_id: str):
     """Re-print a saved label as stored (optionally with other ``copies``) and bump it."""
     saved = store.get(label_id)
     doc = doc_of(saved)
-    data = request.get_json(silent=True) or {}
+    data = _json_object()
     try:
         doc.copies = int(data.get('copies', doc.copies))
     except (TypeError, ValueError):

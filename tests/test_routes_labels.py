@@ -288,3 +288,18 @@ def test_migrated_over_cap_label_reprints_and_thumbnails(monkeypatch, tmp_path):
     assert resp.status_code == 200, resp.get_json()
     assert resp.get_json()["label"]["print_count"] == 1
     fonts.reset_cache()
+
+
+@pytest.mark.parametrize("method,path", [
+    ("delete", "/labels"),
+    ("delete", "/memory"),
+    ("put", "/labels/{id}/star"),
+    ("post", "/labels/{id}/print"),
+])
+def test_a_non_object_body_is_400_json(client, method, path):
+    c, web_app = client
+    label = create(c, "x")
+    resp = getattr(c, method)(path.format(id=label["id"]), json=[label["id"]])
+    assert resp.status_code == 400
+    assert resp.get_json()["success"] is False
+    assert web_app.store.list() == [label] and web_app.printer_service.calls == []
