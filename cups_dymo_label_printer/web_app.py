@@ -6,16 +6,18 @@ Provides a web interface for designing and printing labels.
 
 from io import BytesIO
 import base64
-import json
+import logging
 import os
-import uuid
+from typing import Optional
+
 from flask import Flask, render_template, request, jsonify, send_file
 
-from .config import LABEL_SIZES, DEFAULT_LABEL_SIZE, DEFAULT_FONT_SIZE
+from .config import LABEL_SIZES
 from . import fonts, images
-from .document import LabelDoc, TextBlock, ImageBlock, canvas_mm, from_flat, pt_to_px
+from .document import LabelDoc, TextBlock, ImageBlock, canvas_mm, from_flat
 from .label_generator import render
 from .printer_service import PrinterService
+from .store import LabelNotFound, LabelStore, StoreError, flat_fields
 
 
 UPLOAD_OVERHEAD_BYTES = 64 * 1024  # multipart framing on top of the file itself
@@ -24,71 +26,9 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = images.max_upload_bytes() + UPLOAD_OVERHEAD_BYTES
 printer_service = PrinterService()
 _MEMORY_FILE = os.getenv('LABEL_MEMORY_FILE', 'saved_labels.json')
-_saved_labels: list[dict] = []  # in-memory stack of saved labels
-
-
-def _label_key(payload: dict) -> tuple:
-    """Generate a hashable key for deduplication of saved labels."""
-    return (
-        payload.get('text', ''),
-        payload.get('label_size', DEFAULT_LABEL_SIZE),
-        int(payload.get('font_size', DEFAULT_FONT_SIZE)),
-        payload.get('align', 'center'),
-        int(payload.get('copies', 1)),
-    )
-
-
-def _save_label(payload: dict) -> dict:
-    """Save label payload to stack, deduplicating and moving to top."""
-    global _saved_labels
-    key = _label_key(payload)
-    # Remove any existing matching entry
-    _saved_labels = [entry for entry in _saved_labels if _label_key(entry) != key]
-    new_entry = {
-        'id': str(uuid.uuid4()),
-        'text': payload.get('text', ''),
-        'label_size': payload.get('label_size', DEFAULT_LABEL_SIZE),
-        'font_size': int(payload.get('font_size', DEFAULT_FONT_SIZE)),
-        'align': payload.get('align', 'center'),
-        'copies': int(payload.get('copies', 1)),
-    }
-    _saved_labels.insert(0, new_entry)
-    _persist_memory()
-    return new_entry
-
-
-def _delete_labels(ids: list[str]) -> None:
-    """Delete labels by id from the saved stack."""
-    global _saved_labels
-    id_set = set(ids)
-    _saved_labels = [entry for entry in _saved_labels if entry['id'] not in id_set]
-    _persist_memory()
-
-
-def _persist_memory() -> None:
-    try:
-        with open(_MEMORY_FILE, 'w', encoding='utf-8') as fh:
-            json.dump(_saved_labels, fh)
-    except Exception:
-        # Fail-soft on persistence errors
-        pass
-
-
-def _load_memory() -> None:
-    global _saved_labels
-    if not _MEMORY_FILE or not os.path.exists(_MEMORY_FILE):
-        _saved_labels = []
-        return
-    try:
-        with open(_MEMORY_FILE, 'r', encoding='utf-8') as fh:
-            data = json.load(fh)
-            if isinstance(data, list):
-                _saved_labels = data
-    except Exception:
-        _saved_labels = []
-
-
-_load_memory()
+store = LabelStore(_MEMORY_FILE)
+log = logging.getLogger(__name__)
+HISTORY_WARNING = 'Printed, but the label history could not be updated'
 
 
 @app.route('/')
@@ -123,19 +63,6 @@ def _has_content(doc: LabelDoc) -> bool:
         isinstance(b, ImageBlock) or (isinstance(b, TextBlock) and b.text.strip())
         for b in doc.blocks
     )
-
-
-def _flat_for_history(doc: LabelDoc, copies: int) -> dict:
-    """Flat v1 view of a document, for the (unchanged this phase) history stack."""
-    texts = [b for b in doc.blocks if isinstance(b, TextBlock)]
-    first = texts[0] if texts else None
-    return {
-        'text': '\n'.join(b.text for b in texts),
-        'label_size': doc.label_size,
-        'font_size': pt_to_px(first.font_size_pt, 300) if first else DEFAULT_FONT_SIZE,
-        'align': first.align if first else 'center',
-        'copies': copies,
-    }
 
 
 @app.route('/fonts', methods=['GET'])
@@ -219,35 +146,69 @@ def preview():
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
 
+def _print_error(doc: LabelDoc):
+    """A 400 response if ``doc`` cannot be printed, plus its render; else (None, render)."""
+    if not _has_content(doc):
+        return jsonify({'success': False, 'error': 'No text provided'}), None
+    result = render(doc)
+    for block in result.blocks:
+        if block['missing']:
+            return jsonify({
+                'success': False,
+                'error': f"Image missing for block {block['id']}",
+            }), None
+    return None, result
+
+
+def _print_and_record(doc: LabelDoc, label_id: Optional[str], result, saved=None):
+    """Print an already-rendered ``doc`` and bump its history entry (R16).
+
+    A history failure after CUPS accepted the job is not a print failure: the
+    response still succeeds, with a ``warning`` and the last known entry.
+    """
+    job_id = printer_service.print_image(result.image, doc.label_size, doc.copies, 'Label')
+    body = {
+        'success': True,
+        'message': f'Print job {job_id} submitted successfully',
+        'job_id': job_id,
+    }
+    try:
+        body['label'] = store.record_print(doc, label_id)
+    except (StoreError, LabelNotFound):
+        log.exception('print job %s submitted but history not updated', job_id)
+        body['label'] = saved
+        body['warning'] = HISTORY_WARNING
+    return jsonify(body)
+
+
 @app.route('/print', methods=['POST'])
 def print_label():
-    """Print a label from a document (``{doc, copies}``) or the old flat payload."""
+    """Print a document (``{doc, id?, copies}``) or the old flat payload.
+
+    With ``id`` the design is saved over that entry first; if that save fails
+    nothing is printed (R16).
+    """
     try:
         data = request.json
         doc = _doc_from_request(data)
-        copies = int(data.get('copies', doc.copies))
+        doc.copies = int(data.get('copies', doc.copies))
+        label_id = data.get('id') or None
 
-        if not _has_content(doc):
-            return jsonify({'success': False, 'error': 'No text provided'}), 400
+        error, result = _print_error(doc)
+        if error is not None:
+            return error, 400
 
-        result = render(doc)
-        for block in result.blocks:
-            if block['missing']:
-                return jsonify({
-                    'success': False,
-                    'error': f"Image missing for block {block['id']}",
-                }), 400
+        saved = None
+        if label_id is not None:
+            try:
+                saved = store.update(str(label_id), doc)
+            except LabelNotFound:
+                return jsonify({'success': False, 'error': 'Label not found'}), 404
+            except StoreError as e:
+                return jsonify({'success': False, 'error': str(e)}), 500
+            label_id = saved['id']
 
-        job_id = printer_service.print_image(result.image, doc.label_size, copies, 'Label')
-
-        # Save to memory stack (dedup + move to top)
-        _save_label(_flat_for_history(doc, copies))
-
-        return jsonify({
-            'success': True,
-            'message': f'Print job {job_id} submitted successfully',
-            'job_id': job_id
-        })
+        return _print_and_record(doc, label_id, result, saved)
 
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
@@ -264,19 +225,24 @@ def printer_status():
     return jsonify(status)
 
 
+def _with_flat_fields(labels: list) -> list:
+    return [{**label, **flat_fields(label)} for label in labels]
+
+
 @app.route('/memory', methods=['GET', 'DELETE'])
 def memory():
-    """Manage in-memory saved labels stack."""
-    if request.method == 'GET':
-        return jsonify(_saved_labels)
-
-    # DELETE selected ids
-    data = request.get_json(silent=True) or {}
-    ids = data.get('ids', [])
-    if not isinstance(ids, list):
-        return jsonify({'success': False, 'error': 'ids must be a list'}), 400
-    _delete_labels([str(i) for i in ids])
-    return jsonify({'success': True, 'remaining': _saved_labels})
+    """Compatibility alias of ``/labels``: v2 labels plus the flat v1 fields (R13)."""
+    if request.method == 'DELETE':
+        data = request.get_json(silent=True) or {}
+        ids = data.get('ids', [])
+        if not isinstance(ids, list):
+            return jsonify({'success': False, 'error': 'ids must be a list'}), 400
+        try:
+            store.delete([str(i) for i in ids])
+        except StoreError as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': True, 'remaining': _with_flat_fields(store.list())})
+    return jsonify(_with_flat_fields(store.list()))
 
 
 def run_app(host: str = '0.0.0.0', port: int = 5000, debug: bool = False):

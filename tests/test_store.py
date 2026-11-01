@@ -401,3 +401,56 @@ def test_concurrent_mutations_are_serialised(tmp_path):
         t.join()
     assert len(store.list()) == 20
     assert len(json.loads(path.read_text(encoding="utf-8"))["labels"]) == 20
+
+
+# --- record_print (R16) -----------------------------------------------------
+
+def test_record_print_without_id_bumps_a_content_match(store):
+    label = store.create(text_doc("Same"))
+    doc = text_doc("Same")
+    doc.blocks[0].id = "other-block-id"  # block ids do not count
+    doc.copies = 5                        # nor do copies
+    doc.name = "renamed"                  # nor does the name
+
+    bumped = store.record_print(doc)
+    assert bumped["id"] == label["id"]
+    assert bumped["print_count"] == 1
+    assert bumped["last_printed_at"] is not None
+    assert bumped["name"] == label["name"]
+    assert len(store.list()) == 1
+    assert store.record_print(text_doc("Same"))["print_count"] == 2
+
+
+def test_record_print_without_match_creates_a_printed_entry(store):
+    store.create(text_doc("Same"))
+    for different in (text_doc("Other"), text_doc("Same", label_size="30252"),
+                      text_doc("Same", bold=True)):
+        entry = store.record_print(different)
+        assert entry["print_count"] == 1
+        assert entry["last_printed_at"] == entry["created_at"]
+    assert len(store.list()) == 4
+
+
+def test_record_print_orientation_is_part_of_the_content(store):
+    store.create(text_doc("Same"))
+    doc = text_doc("Same")
+    doc.orientation = "portrait"
+    store.record_print(doc)
+    assert len(store.list()) == 2
+
+
+def test_record_print_with_id_bumps_that_entry(store):
+    a = store.create(text_doc("A"))
+    store.create(text_doc("B"))
+    entry = store.record_print(text_doc("B"), a["id"])
+    assert entry["id"] == a["id"] and entry["print_count"] == 1
+
+
+def test_record_print_create_rolls_back_on_failure(store, monkeypatch):
+    def boom(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(store_mod.os, "replace", boom)
+    with pytest.raises(StoreError):
+        store.record_print(text_doc("New"))
+    assert store.list() == []

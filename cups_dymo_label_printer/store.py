@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .config import DEFAULT_FONT_SIZE
-from .document import LabelDoc, TextBlock, from_flat, pt_to_px
+from .document import LabelDoc, TextBlock, content_key, from_flat, pt_to_px
 
 log = logging.getLogger(__name__)
 
@@ -282,10 +282,16 @@ class LabelStore:
                       if (not starred_only or l['starred']) and _matches(l, needle)]
             return copy.deepcopy(_sorted(labels, sort))
 
+    def _content_match(self, key: str) -> Optional[dict]:
+        for entry in self._labels:
+            if content_key(LabelDoc.from_json(entry)) == key:
+                return entry
+        return None
+
     # --- mutations ----------------------------------------------------------
 
-    def _new_entry(self, doc: LabelDoc) -> dict:
-        return _entry(str(uuid.uuid4()), _named(doc), _iso(self._now()))
+    def _new_entry(self, doc: LabelDoc, stamp: Optional[str] = None) -> dict:
+        return _entry(str(uuid.uuid4()), _named(doc), stamp or _iso(self._now()))
 
     def create(self, doc: LabelDoc) -> dict:
         def change():
@@ -333,10 +339,22 @@ class LabelStore:
         return self._mutate(change)
 
     def record_print(self, doc: LabelDoc, label_id: Optional[str] = None) -> dict:
-        """Bump ``last_printed_at`` and ``print_count`` of the printed entry (R16)."""
+        """Bump the printed entry's ``last_printed_at`` and ``print_count`` (R16).
+
+        With ``label_id`` that entry is bumped. Without, the first entry whose
+        content (stock, orientation, blocks; ids and copies aside) equals ``doc``'s
+        is bumped, else ``doc`` is saved as a new entry.
+        """
         def change():
-            entry = self._find(label_id)
-            entry['last_printed_at'] = _iso(self._now())
+            stamp = _iso(self._now())
+            if label_id is not None:
+                entry = self._find(label_id)
+            else:
+                entry = self._content_match(content_key(doc))
+                if entry is None:
+                    entry = self._new_entry(doc, stamp)
+                    self._labels.insert(0, entry)
+            entry['last_printed_at'] = stamp
             entry['print_count'] += 1
             return entry
         return self._mutate(change)

@@ -179,7 +179,8 @@ def test_memory_adds_on_print_and_dedup(app_client, monkeypatch):
     resp_list_2 = client.get("/memory")
     second_list = resp_list_2.get_json()
     assert len(second_list) == 1
-    assert second_list[0]["id"] != first_id  # dedup reinserted at top
+    assert second_list[0]["id"] == first_id  # content match bumps in place (R16)
+    assert second_list[0]["print_count"] == 2
     assert second_list[0]["text"] == "Hello"
 
 
@@ -236,8 +237,9 @@ def test_persistence_writes_file_on_print(app_client, monkeypatch, tmp_path):
     memory_file = os.environ["LABEL_MEMORY_FILE"]
     assert os.path.exists(memory_file)
     data = json.loads(open(memory_file, "r", encoding="utf-8").read())
-    assert len(data) == 1
-    assert data[0]["text"] == "Persist Me"
+    assert data["version"] == 2
+    assert len(data["labels"]) == 1
+    assert data["labels"][0]["blocks"][0]["text"] == "Persist Me"
 
 
 def test_persistence_loads_on_startup(monkeypatch, tmp_path):
@@ -273,3 +275,107 @@ def test_persistence_loads_on_startup(monkeypatch, tmp_path):
     data = resp.get_json()
     assert len(data) == 1
     assert data[0]["text"] == "Seed"
+
+
+# --- print flow (R16) -------------------------------------------------------
+
+def _doc(text):
+    return {"label_size": "11354", "blocks": [{"type": "text", "id": "t1", "text": text}]}
+
+
+def test_print_names_the_entry_it_saved(app_client, monkeypatch):
+    client, web_app = app_client
+    monkeypatch.setattr(web_app, "printer_service", _StubPrinterService())
+
+    data = client.post("/print", json={"doc": _doc("Hi")}).get_json()
+    assert data["success"] is True and "warning" not in data
+    assert data["label"]["id"] == web_app.store.list()[0]["id"]
+    assert data["label"]["print_count"] == 1
+
+
+def test_print_with_id_saves_in_place_then_prints_then_bumps(app_client, monkeypatch):
+    client, web_app = app_client
+    stub = _StubPrinterService()
+    monkeypatch.setattr(web_app, "printer_service", stub)
+    from cups_dymo_label_printer.document import LabelDoc
+    saved = web_app.store.create(LabelDoc.from_json(_doc("Draft")))
+
+    doc = _doc("Edited")
+    doc["name"] = "Jar"
+    resp = client.post("/print", json={"doc": doc, "id": saved["id"], "copies": 3})
+    data = resp.get_json()
+
+    assert resp.status_code == 200 and stub.calls == [("11354", 3, "Label")]
+    assert data["label"]["id"] == saved["id"]
+    [entry] = web_app.store.list()
+    assert entry["id"] == saved["id"]
+    assert entry["name"] == "Jar" and entry["blocks"][0]["text"] == "Edited"
+    assert entry["copies"] == 3 and entry["print_count"] == 1
+    assert entry["updated_at"] >= entry["created_at"]
+
+
+def test_print_with_unknown_id_is_404_and_prints_nothing(app_client, monkeypatch):
+    client, web_app = app_client
+    stub = _StubPrinterService()
+    monkeypatch.setattr(web_app, "printer_service", stub)
+
+    resp = client.post("/print", json={"doc": _doc("x"), "id": "missing"})
+    assert resp.status_code == 404 and stub.calls == []
+
+
+def test_pre_print_save_failure_is_500_and_prints_nothing(app_client, monkeypatch):
+    client, web_app = app_client
+    stub = _StubPrinterService()
+    monkeypatch.setattr(web_app, "printer_service", stub)
+    from cups_dymo_label_printer import store as store_mod
+    from cups_dymo_label_printer.document import LabelDoc
+    saved = web_app.store.create(LabelDoc.from_json(_doc("Draft")))
+
+    def boom(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(store_mod.os, "replace", boom)
+    resp = client.post("/print", json={"doc": _doc("Edited"), "id": saved["id"]})
+    data = resp.get_json()
+
+    assert resp.status_code == 500 and data["success"] is False
+    assert stub.calls == []
+    assert web_app.store.get(saved["id"])["blocks"][0]["text"] == "Draft"
+
+
+def test_post_print_history_failure_is_200_with_warning(app_client, monkeypatch):
+    client, web_app = app_client
+    stub = _StubPrinterService()
+    monkeypatch.setattr(web_app, "printer_service", stub)
+    from cups_dymo_label_printer import store as store_mod
+
+    def boom(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(store_mod.os, "replace", boom)
+    resp = client.post("/print", json={"doc": _doc("Hi")})
+    data = resp.get_json()
+
+    assert resp.status_code == 200
+    assert data["success"] is True and data["job_id"] == 123
+    assert "history" in data["warning"]
+    assert data["label"] is None
+    assert len(stub.calls) == 1
+    assert web_app.store.list() == []
+
+
+def test_post_print_bump_failure_with_id_still_names_the_saved_entry(app_client, monkeypatch):
+    client, web_app = app_client
+    monkeypatch.setattr(web_app, "printer_service", _StubPrinterService())
+    from cups_dymo_label_printer.document import LabelDoc
+    from cups_dymo_label_printer.store import StoreError
+    saved = web_app.store.create(LabelDoc.from_json(_doc("Draft")))
+
+    def fail(*_args, **_kwargs):
+        raise StoreError("disk full")
+
+    monkeypatch.setattr(web_app.store, "record_print", fail)
+    data = client.post("/print", json={"doc": _doc("Edited"), "id": saved["id"]}).get_json()
+    assert data["success"] is True and "warning" in data
+    assert data["label"]["id"] == saved["id"]
+    assert data["label"]["blocks"][0]["text"] == "Edited"
