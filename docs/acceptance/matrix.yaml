@@ -179,9 +179,16 @@ rows:
       takes its first text line as its name.
     origin:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R25
-    levels: {}
-    status: not-implemented
-    notes: ''
+    levels:
+      unit:
+      - Cups-Dymo-LabelWriter450:tests/test_store.py
+      api:
+      - Cups-Dymo-LabelWriter450:tests/test_routes_labels.py
+      ui:
+      - Cups-Dymo-LabelWriter450:scripts/capture_visual.py
+    status: ci
+    notes: default name and rename covered by pytest; the editor field is exercised
+      by the Playwright capture
   - id: ldx-ux
     capability: label-ux
     acceptance: Ctrl/Cmd+Enter prints, Ctrl/Cmd+P previews, a printer status badge and
