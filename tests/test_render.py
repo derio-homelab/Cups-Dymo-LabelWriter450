@@ -149,3 +149,11 @@ def test_missing_image_draws_nothing_and_is_flagged(monkeypatch, tmp_path):
     result = render(doc_of(gone))
     assert result.blocks[0]["missing"] is True
     assert dark(result.image) == 0
+
+
+def test_image_width_clamped_to_canvas_width():
+    block = {"type": "image", "id": "i", "src": "icon:star", "x_mm": 0, "y_mm": 0, "width_mm": 57}
+    # 57 mm is the full canvas width of 11354 landscape: allowed, never wider than the canvas
+    result = render(doc_of(block))
+    assert result.image.size[0] == int(57 * 300 / 25.4)
+    assert result.blocks[0]["missing"] is False

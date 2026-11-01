@@ -182,3 +182,28 @@ def test_print_doc_with_missing_image_is_400_naming_block(client):
     assert resp.status_code == 400
     assert "gone" in resp.get_json()["error"]
     assert web_app.printer_service.calls == []
+
+
+def test_render_huge_image_width_is_400(client):
+    c, _ = client
+    doc = {"label_size": "11354", "blocks": [
+        {"type": "image", "src": "icon:star", "x_mm": 0, "y_mm": 0, "width_mm": 1e7}]}
+    resp = c.post("/render", json=doc)
+    assert resp.status_code == 400
+
+
+def test_render_extreme_aspect_upload_is_400(client):
+    c, _ = client
+    buf = io.BytesIO()
+    Image.new("1", (4, 20000), 1).save(buf, "PNG")
+    ref = upload(c, buf.getvalue()).get_json()["ref"]
+    doc = {"label_size": "11354", "blocks": [
+        {"type": "image", "src": ref, "x_mm": 0, "y_mm": 0, "width_mm": 50}]}
+    assert c.post("/render", json=doc).status_code == 400
+
+
+def test_upload_decompression_bomb_is_400(client):
+    c, _ = client
+    buf = io.BytesIO()
+    Image.new("1", (20000, 20000), 1).save(buf, "PNG")
+    assert upload(c, buf.getvalue()).status_code == 400

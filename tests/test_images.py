@@ -128,3 +128,24 @@ def test_render_cache_is_lru_bounded():
     for w in range(1, 80):
         images.load_mono(ref, w, "threshold", 128)
     assert images.cache_size() <= 64
+
+
+def test_decompression_bomb_upload_refused():
+    buf = io.BytesIO()
+    Image.new("1", (20000, 20000), 1).save(buf, "PNG")   # tiny file, 400 Mpx
+    assert len(buf.getvalue()) < 5 * 1024 * 1024
+    with pytest.raises(images.UnsupportedImage):
+        images.store_upload(buf.getvalue(), "bomb.png")
+
+
+def test_load_refuses_over_pixel_budget_raster():
+    ref = images.store_upload(encoded("PNG", size=(10, 1000)), "tall.png")
+    with pytest.raises(images.ImageTooLarge):
+        images.load_image(ref, width_px=2000)    # 2000 x 200000 px
+
+
+def test_load_refuses_over_pixel_budget_svg():
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1000"><rect width="1" height="1000"/></svg>'
+    ref = images.store_upload(svg, "tall.svg")
+    with pytest.raises(images.ImageTooLarge):
+        images.load_image(ref, width_px=2000)

@@ -19,6 +19,10 @@ from PIL import Image
 ICON_DIR = os.path.join(os.path.dirname(__file__), 'static', 'icons')
 DEFAULT_MAX_UPLOAD_MB = 5
 CACHE_LIMIT = 64
+MAX_RENDER_PIXELS = 4_000_000     # budget for one rasterized/resized image
+MAX_UPLOAD_PIXELS = 25_000_000    # decoded size cap for uploaded PNG/JPEG
+
+Image.MAX_IMAGE_PIXELS = MAX_UPLOAD_PIXELS
 
 _UPLOAD_RE = re.compile(r'^upload:([0-9a-f]{64}\.(?:png|jpg|svg))$')
 _ICON_RE = re.compile(r'^icon:([a-z0-9-]+)$')
@@ -71,6 +75,14 @@ def store_upload(data: bytes, filename: str = '') -> str:
     ext = _sniff(data)
     if ext is None:
         raise UnsupportedImage('Only PNG, JPEG and SVG images are supported')
+    if ext != 'svg':
+        try:
+            with Image.open(io.BytesIO(data)) as probe:   # header only, no decode
+                too_big = probe.width * probe.height > MAX_UPLOAD_PIXELS
+        except Exception as exc:
+            raise UnsupportedImage('Image could not be read') from exc
+        if too_big:
+            raise UnsupportedImage('Image dimensions are too large')
     name = f'{hashlib.sha256(data).hexdigest()}.{ext}'
     directory = image_dir()
     os.makedirs(directory, exist_ok=True)
@@ -119,6 +131,38 @@ def _read_ref(ref: str) -> tuple:
         return fh.read(), is_svg
 
 
+_VIEWBOX_RE = re.compile(rb'viewBox\s*=\s*"\s*[-\d.e]+[ ,]+[-\d.e]+[ ,]+([\d.e]+)[ ,]+([\d.e]+)\s*"')
+_DIM_RE = re.compile(rb'<svg[^>]*?\s%s\s*=\s*"([\d.]+)(?:px)?"')
+
+
+def _svg_aspect(data: bytes) -> float:
+    """Height/width of an SVG from its viewBox or width/height (rasterized probe as fallback)."""
+    head = data[:65536]
+    pair = None
+    match = _VIEWBOX_RE.search(head)
+    if match:
+        pair = (match.group(1), match.group(2))
+    else:
+        w, h = (re.search(_DIM_RE.pattern % name, head) for name in (b'width', b'height'))
+        if w and h:
+            pair = (w.group(1), h.group(1))
+    if pair:
+        try:
+            w, h = float(pair[0]), float(pair[1])
+            if w > 0 and h > 0:
+                return h / w
+        except ValueError:
+            pass
+    import cairosvg
+    probe = Image.open(io.BytesIO(cairosvg.svg2png(bytestring=data, output_width=64)))
+    return probe.height / probe.width
+
+
+def _check_budget(width_px: float, height_px: float) -> None:
+    if width_px * height_px > MAX_RENDER_PIXELS:
+        raise ImageTooLarge('Image would be rendered too large')
+
+
 def load_image(ref: str, width_px: int) -> Image.Image:
     """Load a reference as an RGB image ``width_px`` wide, aspect kept, on white."""
     width_px = max(1, int(width_px))
@@ -126,12 +170,19 @@ def load_image(ref: str, width_px: int) -> Image.Image:
     if is_svg:
         import cairosvg
         try:
+            _check_budget(width_px, width_px * _svg_aspect(data))
             data = cairosvg.svg2png(bytestring=data, output_width=width_px)
+        except ImageTooLarge:
+            raise
         except Exception as exc:  # malformed SVG
             raise ImageMissing(ref) from exc
     try:
         img = Image.open(io.BytesIO(data))
+        if not is_svg:
+            _check_budget(width_px, width_px * img.height / img.width)
         img.load()
+    except ImageTooLarge:
+        raise
     except Exception as exc:
         raise ImageMissing(ref) from exc
     rgba = img.convert('RGBA')

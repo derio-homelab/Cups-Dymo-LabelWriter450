@@ -119,7 +119,7 @@ def _bbox_mm(box: tuple, dpi: int) -> list:
 
 
 def _draw_image(canvas: Image.Image, block: ImageBlock, dpi: int) -> dict:
-    width_px = max(1, round(_mm_to_px(block.width_mm, dpi)))
+    width_px = max(1, min(round(_mm_to_px(block.width_mm, dpi)), canvas.width))
     result = {
         'id': block.id, 'overflow': False, 'font_substituted': False, 'missing': False,
         'bbox_mm': [block.x_mm, block.y_mm, block.width_mm, block.width_mm],

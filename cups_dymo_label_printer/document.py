@@ -161,13 +161,18 @@ class LabelDoc:
             copies = int(raw.get('copies', 1))
         except (TypeError, ValueError):
             raise ValueError("copies must be an integer") from None
-        return cls(
+        doc = cls(
             label_size=label_size,
             orientation=orientation,
             copies=copies,
             name=str(raw.get('name') or ''),
             blocks=[_block_from_json(b, i) for i, b in enumerate(blocks)],
         )
+        long_edge = max(LABEL_SIZES[label_size]['width_mm'], LABEL_SIZES[label_size]['height_mm'])
+        for block in doc.blocks:
+            if isinstance(block, ImageBlock) and block.width_mm > long_edge:
+                raise ValueError(f"width_mm must not exceed the label's long edge ({long_edge} mm)")
+        return doc
 
     def to_json(self) -> dict:
         return {

@@ -101,3 +101,15 @@ def test_content_key_ignores_ids_and_copies():
 def test_defaults_are_module_constants():
     assert document.DEFAULT_MARGIN_MM == 2
     assert document.DEFAULT_THRESHOLD == 128
+
+
+@pytest.mark.parametrize("width", [0, -5, 90, 1e9])
+def test_image_width_bounded_by_label_long_edge(width):
+    with pytest.raises(ValueError, match="width_mm"):
+        LabelDoc.from_json(_doc(label_size="30252", blocks=[
+            {"type": "image", "src": "icon:star", "width_mm": width}]))
+
+
+def test_image_width_at_long_edge_ok():
+    LabelDoc.from_json(_doc(label_size="30252", blocks=[
+        {"type": "image", "src": "icon:star", "width_mm": 89}]))
