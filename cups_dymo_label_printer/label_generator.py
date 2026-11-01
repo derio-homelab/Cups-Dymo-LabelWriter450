@@ -12,8 +12,10 @@ from .config import (
     DEFAULT_LABEL_SIZE,
     DEFAULT_DPI,
     DEFAULT_FONT_SIZE,
-    DEFAULT_FONT_PATH,
+    DEFAULT_FONT_FAMILY,
+    DEFAULT_FONT_BOLD,
 )
+from . import fonts
 
 
 AlignmentType = Literal['left', 'center', 'right']
@@ -78,11 +80,7 @@ def _load_font(font_size: int) -> Union[ImageFont.FreeTypeFont, ImageFont.ImageF
     Returns:
         Font object (TrueType or default)
     """
-    try:
-        return ImageFont.truetype(DEFAULT_FONT_PATH, font_size)
-    except (IOError, OSError):
-        # Fall back to default font if TrueType font not available
-        return ImageFont.load_default()
+    return fonts.load(DEFAULT_FONT_FAMILY, DEFAULT_FONT_BOLD, False, font_size)
 
 
 def _calculate_text_x_position(
