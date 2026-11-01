@@ -60,9 +60,14 @@ rows:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R5
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R6
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R7
-    levels: {}
-    status: not-implemented
-    notes: ''
+    levels:
+      unit:
+      - Cups-Dymo-LabelWriter450:tests/test_images.py
+      - Cups-Dymo-LabelWriter450:tests/test_render.py
+      api:
+      - Cups-Dymo-LabelWriter450:tests/test_routes_render.py
+    status: ci
+    notes: upload, icons, mono conversion and renderer covered by pytest
   - id: ldx-print-mono
     capability: label-images
     acceptance: Thresholded and dithered images print legibly on thermal paper and match
