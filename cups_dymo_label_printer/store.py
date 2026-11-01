@@ -57,13 +57,22 @@ def default_name(doc: LabelDoc) -> str:
     return ''
 
 
+DESIGN_FIELDS = ('name', 'label_size', 'orientation', 'copies', 'blocks')
+
+
+def _named(doc: LabelDoc) -> LabelDoc:
+    """A copy of ``doc`` whose empty name is replaced by its default (R25)."""
+    doc = copy.deepcopy(doc)
+    if not doc.name.strip():
+        doc.name = default_name(doc)
+    return doc
+
+
 def _migrate_v1_entry(entry: dict) -> dict:
     flat = dict(entry)
     if flat.get('align') not in ('left', 'center', 'right'):
         flat['align'] = 'center'  # v1 drew unknown alignments centred
-    doc = from_flat(flat)
-    doc.name = default_name(doc)
-    return _entry(str(entry.get('id') or uuid.uuid4()), doc, None)
+    return _entry(str(entry.get('id') or uuid.uuid4()), _named(from_flat(flat)), None)
 
 
 def _entry(label_id: str, doc: LabelDoc, stamp: Optional[str]) -> dict:
@@ -90,8 +99,10 @@ def _validated_v2_entry(raw: dict) -> dict:
     entry = _entry(raw['id'], doc, None)
     for key in ('created_at', 'updated_at', 'last_printed_at'):
         value = raw.get(key)
-        if value is not None and not isinstance(value, str):
-            raise ValueError(f'{key} must be a string')
+        if value is not None:
+            if not isinstance(value, str):
+                raise ValueError(f'{key} must be a string')
+            parse_timestamp(value)
         entry[key] = value
     if not isinstance(raw.get('starred', False), bool):
         raise ValueError('starred must be a boolean')
@@ -101,6 +112,35 @@ def _validated_v2_entry(raw: dict) -> dict:
         raise ValueError('print_count must be a non-negative integer')
     entry['print_count'] = count
     return entry
+
+
+SORT_FIELDS = {'last_printed': 'last_printed_at', 'created': 'created_at', 'name': None}
+SORTS = tuple(SORT_FIELDS)
+DEFAULT_SORT = 'last_printed'
+
+
+def parse_timestamp(value: str) -> datetime:
+    moment = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def _matches(label: dict, needle: str) -> bool:
+    if not needle:
+        return True
+    haystacks = [label['name']] + [b['text'] for b in label['blocks'] if b['type'] == 'text']
+    return any(needle in h.casefold() for h in haystacks)
+
+
+def _sorted(labels: list, sort: str) -> list:
+    """Starred first; then by name (A-Z) or newest timestamp first, unknown last. Stable."""
+    field = SORT_FIELDS[sort]
+    if field is None:
+        ordered = sorted(labels, key=lambda l: l['name'].casefold())
+    else:
+        dated = sorted((l for l in labels if l[field]),
+                       key=lambda l: parse_timestamp(l[field]), reverse=True)
+        ordered = dated + [l for l in labels if not l[field]]
+    return sorted(ordered, key=lambda l: not l['starred'])
 
 
 class LabelStore:
@@ -231,22 +271,73 @@ class LabelStore:
         with self._lock:
             return copy.deepcopy(self._find(label_id))
 
-    def list(self) -> list:
+    def list(self, q: Optional[str] = None, sort: str = DEFAULT_SORT,
+             starred_only: bool = False) -> list:
+        """Labels matching ``q`` (case-insensitive, name + every text block), starred first."""
+        if sort not in SORTS:
+            raise ValueError(f'Unknown sort: {sort}')
+        needle = (q or '').strip().casefold()
         with self._lock:
-            return copy.deepcopy(self._labels)
+            labels = [l for l in self._labels
+                      if (not starred_only or l['starred']) and _matches(l, needle)]
+            return copy.deepcopy(_sorted(labels, sort))
 
     # --- mutations ----------------------------------------------------------
 
     def _new_entry(self, doc: LabelDoc) -> dict:
-        doc = copy.deepcopy(doc)
-        if not doc.name.strip():
-            doc.name = default_name(doc)
-        return _entry(str(uuid.uuid4()), doc, _iso(self._now()))
+        return _entry(str(uuid.uuid4()), _named(doc), _iso(self._now()))
 
     def create(self, doc: LabelDoc) -> dict:
         def change():
             entry = self._new_entry(doc)
             self._labels.insert(0, entry)
+            return entry
+        return self._mutate(change)
+
+    def update(self, label_id: str, doc: LabelDoc) -> dict:
+        """Replace a label's design in place: same id, new ``updated_at`` (R14, R25)."""
+        def change():
+            entry = self._find(label_id)
+            entry.update({k: v for k, v in _named(doc).to_json().items() if k in DESIGN_FIELDS})
+            entry['updated_at'] = _iso(self._now())
+            return entry
+        return self._mutate(change)
+
+    def duplicate(self, label_id: str) -> dict:
+        """A new, unstarred, never-printed copy; the original is untouched (R14)."""
+        def change():
+            source = self._find(label_id)
+            stamp = _iso(self._now())
+            entry = copy.deepcopy(source)
+            entry.update(id=str(uuid.uuid4()), starred=False, created_at=stamp,
+                         updated_at=stamp, last_printed_at=None, print_count=0)
+            self._labels.insert(self._labels.index(source), entry)
+            return entry
+        return self._mutate(change)
+
+    def set_star(self, label_id: str, starred: bool) -> dict:
+        def change():
+            entry = self._find(label_id)
+            entry['starred'] = bool(starred)
+            return entry
+        return self._mutate(change)
+
+    def delete(self, ids) -> int:
+        """Delete every label whose id is in ``ids``; returns how many went."""
+        wanted = set(ids)
+
+        def change():
+            before = len(self._labels)
+            self._labels = [l for l in self._labels if l['id'] not in wanted]
+            return before - len(self._labels)
+        return self._mutate(change)
+
+    def record_print(self, doc: LabelDoc, label_id: Optional[str] = None) -> dict:
+        """Bump ``last_printed_at`` and ``print_count`` of the printed entry (R16)."""
+        def change():
+            entry = self._find(label_id)
+            entry['last_printed_at'] = _iso(self._now())
+            entry['print_count'] += 1
             return entry
         return self._mutate(change)
 

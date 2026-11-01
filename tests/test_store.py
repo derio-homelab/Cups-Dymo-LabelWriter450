@@ -237,3 +237,167 @@ def test_timestamps_are_utc_iso(tmp_path):
     label = LabelStore(tmp_path / "s.json", now=Clock()).create(text_doc("One"))
     assert label["created_at"] == "2026-11-01T18:00:01.000Z"
     assert label["updated_at"] == label["created_at"]
+
+
+# --- operations (R13, R14, R15, R25) ----------------------------------------
+
+@pytest.fixture()
+def store(tmp_path):
+    return LabelStore(tmp_path / "saved_labels.json", now=Clock())
+
+
+def test_update_keeps_id_and_bumps_updated_at_only(store):
+    label = store.create(text_doc("Old"))
+    store.set_star(label["id"], True)
+    updated = store.update(label["id"], text_doc("New", label_size="30252"))
+
+    assert updated["id"] == label["id"]
+    assert updated["updated_at"] > updated["created_at"]
+    assert updated["created_at"] == label["created_at"]
+    assert updated["starred"] is True
+    assert updated["print_count"] == 0 and updated["last_printed_at"] is None
+    assert updated["label_size"] == "30252"
+    assert updated["blocks"][0]["text"] == "New"
+    assert store.get(label["id"]) == updated
+
+
+def test_update_renames_in_place(store):
+    label = store.create(text_doc("Flour"))
+    doc = text_doc("Flour")
+    doc.name = "Kitchen jar"
+    assert store.update(label["id"], doc)["name"] == "Kitchen jar"
+    assert [l["name"] for l in store.list()] == ["Kitchen jar"]
+
+
+def test_update_unknown_id_raises(store):
+    with pytest.raises(store_mod.LabelNotFound):
+        store.update("nope", text_doc("x"))
+
+
+def test_duplicate_is_a_fresh_copy(store):
+    label = store.create(text_doc("Orig"))
+    store.set_star(label["id"], True)
+    store.record_print(text_doc("Orig"), label["id"])
+    original = store.get(label["id"])
+
+    dup = store.duplicate(label["id"])
+    assert dup["id"] != label["id"]
+    assert dup["created_at"] > original["created_at"]
+    assert dup["starred"] is False
+    assert dup["last_printed_at"] is None and dup["print_count"] == 0
+    assert dup["blocks"] == original["blocks"] and dup["name"] == original["name"]
+    assert store.get(label["id"]) == original
+
+
+def test_set_star_persists(store, tmp_path):
+    label = store.create(text_doc("Star me"))
+    assert store.set_star(label["id"], True)["starred"] is True
+    assert LabelStore(tmp_path / "saved_labels.json").get(label["id"])["starred"] is True
+    assert store.set_star(label["id"], False)["starred"] is False
+
+
+def _seed(store):
+    a = store.create(text_doc("banana"))
+    b = store.create(text_doc("Apple"))
+    c = store.create(text_doc("cherry"))
+    store.record_print(text_doc("banana"), a["id"])  # a printed last
+    return a["id"], b["id"], c["id"]
+
+
+def test_list_sorts(store):
+    a, b, c = _seed(store)
+    # last_printed (default): printed first, then never-printed in list order
+    assert [l["id"] for l in store.list()] == [a, c, b]
+    assert [l["id"] for l in store.list(sort="created")] == [c, b, a]
+    assert [l["id"] for l in store.list(sort="name")] == [b, a, c]  # case-insensitive
+
+
+@pytest.mark.parametrize("sort", ["last_printed", "created", "name"])
+def test_starred_first_under_every_sort(store, sort):
+    a, b, c = _seed(store)
+    store.set_star(c, True)
+    assert store.list(sort=sort)[0]["id"] == c
+
+
+def test_last_printed_puts_nulls_last(store):
+    a, b, c = _seed(store)
+    store.record_print(text_doc("Apple"), b)
+    assert [l["id"] for l in store.list()] == [b, a, c]
+
+
+def test_unknown_sort_rejected(store):
+    with pytest.raises(ValueError):
+        store.list(sort="size")
+
+
+def test_starred_only_filter(store):
+    a, b, c = _seed(store)
+    store.set_star(b, True)
+    assert [l["id"] for l in store.list(starred_only=True)] == [b]
+
+
+def test_search_is_case_insensitive_over_name_and_all_text_blocks(store):
+    doc = LabelDoc.from_json({"label_size": "11354", "name": "Pantry", "blocks": [
+        {"type": "text", "text": "Flour"},
+        {"type": "image", "src": "icon:star"},
+        {"type": "text", "text": "best before\nJune"},
+    ]})
+    hit = store.create(doc)
+    store.create(text_doc("Other"))
+    for q in ("pantry", "FLOUR", "june", "Before"):
+        assert [l["id"] for l in store.list(q=q)] == [hit["id"]], q
+    assert store.list(q="nothing") == []
+    assert len(store.list(q="  ")) == 2
+
+
+def test_create_with_empty_name_uses_first_non_empty_line(store):
+    doc = LabelDoc.from_json({"label_size": "11354", "name": "  ", "blocks": [
+        {"type": "image", "src": "icon:star"},
+        {"type": "text", "text": "\n  \n  Flour  \nT55"},
+        {"type": "text", "text": "Second"},
+    ]})
+    assert store.create(doc)["name"] == "Flour"
+
+
+def test_update_with_empty_name_uses_default_too(store):
+    label = store.create(text_doc("One"))
+    assert store.update(label["id"], text_doc("Two\nThree"))["name"] == "Two"
+
+
+def test_delete_many(store):
+    a, b, c = _seed(store)
+    assert store.delete([a, c, "unknown"]) == 2
+    assert [l["id"] for l in store.list()] == [b]
+
+
+def test_failed_mutations_roll_back(store, monkeypatch):
+    label = store.create(text_doc("One"))
+    before = store.list()
+
+    def boom(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(store_mod.os, "replace", boom)
+    for op in (lambda: store.update(label["id"], text_doc("Two")),
+               lambda: store.duplicate(label["id"]),
+               lambda: store.set_star(label["id"], True),
+               lambda: store.delete([label["id"]]),
+               lambda: store.record_print(text_doc("One"), label["id"])):
+        with pytest.raises(StoreError):
+            op()
+        assert store.list() == before
+
+
+def test_concurrent_mutations_are_serialised(tmp_path):
+    import threading
+
+    path = tmp_path / "saved_labels.json"
+    store = LabelStore(path)
+    threads = [threading.Thread(target=store.create, args=(text_doc(f"L{i}"),))
+               for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(store.list()) == 20
+    assert len(json.loads(path.read_text(encoding="utf-8"))["labels"]) == 20
