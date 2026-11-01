@@ -209,3 +209,9 @@ Post-merge, operator-driven, on the real LabelWriter 450:
    orientation; Re-print one from history.
 </content>
 </invoke>
+
+## Implementation Plans
+
+| Plan | Repo | File | Depends on |
+|------|------|------|------------|
+| 2026-11-01-label-designer-ux | `derio-homelab/Cups-Dymo-LabelWriter450` | `2026-11-01-label-designer-ux` | — |
