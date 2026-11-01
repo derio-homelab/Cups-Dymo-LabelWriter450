@@ -165,8 +165,8 @@ poetry run pytest --cov=cups_dymo_label_printer
 
 ## Supported Label Sizes
 
-| Code  | Description | Dimensions |
-|-------|-------------|------------|
+| Code | Description | Dimensions |
+| ------- | ------------- | ------------ |
 | 11354 | Multipurpose | 2-1/4" x 1-1/4" (57x32mm) |
 | 30252 | Address | 1-1/8" x 3-1/2" (28x89mm) |
 | 30323 | Shipping | 2-1/8" x 4" (54x101mm) |

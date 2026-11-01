@@ -43,7 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install markdownlint-cli
-        run: npm install -g markdownlint-cli
+        # Pinned: an unpinned install picked up new rules (MD060) mid-PR.
+        run: npm install -g markdownlint-cli@0.50.0
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Run markdownlint
