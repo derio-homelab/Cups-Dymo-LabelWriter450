@@ -15,7 +15,7 @@ journal:
   - {kind: discovery, id: p3-d2, phase: 3, title: "Dev machine lacks the catalog fonts; matplotlib supplies real DejaVu", body: "scripts/dev_server.py adds matplotlib's bundled DejaVu directory (when importable) to LABEL_FONT_DIRS beside tests/fixtures/fonts, so the capture shows several real families. The capture asserts the limits it shows (drag clamp 56 mm, scale = label width, copies 1/99, no horizontal scroll at 360 px, Ctrl+P prevented plus one /render)."}
   - {kind: discovery, id: p3-d3, phase: 3, title: "Acceptance matrix", body: "ldx-single-ui and ldx-acceptance-doc moved to ci with refs. ldx-live-preview, ldx-history-panel, ldx-ux and ldx-label-name stay not-implemented: they await the orchestrator's visual-evidence acceptance and have no automated browser test in CI (the Playwright capture is not a CI job)."}
 resolves: []
-evidence: {tests: /var/folders/28/d4n60x_92gbgh3rtf4vstb0h0000gn/T/p3-suite.log}
+evidence: {tests: /var/folders/28/d4n60x_92gbgh3rtf4vstb0h0000gn/T//p3-suite-2.log}
 visual:
   - row: ldx-live-preview
     script: /Users/derio/.cache/fr/worktrees/python-Cups-Dymo-LabelWriter450/feat__label-designer-ux/scripts/capture_visual.py
