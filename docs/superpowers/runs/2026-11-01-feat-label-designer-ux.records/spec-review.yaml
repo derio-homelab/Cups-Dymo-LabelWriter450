@@ -1,0 +1,44 @@
+schema_version: 10
+run: 2026-11-01-feat-label-designer-ux
+step: spec-review
+outcome: done
+journal:
+  - kind: review
+    id: spec-review-r1
+    title: "independent spec review: 15 findings (14 in, 1 out)"
+    body: |
+      fr-spec-reviewer checked the spec against the 10 operator decisions (all honoured, with fixture-licence wording drift in sr-7) and against codebase reality, citing file:line for label_generator.py, config.py, web_app.py, printer_service.py, templates/index.html, setup.sh, Dockerfile, pyproject.toml, .github/workflows, web_app/, Acceptance_Tests.md and tests/. Findings raised: sr-1..sr-13 and sr-15 (in scope), sr-14 (out of scope).
+  - {kind: finding, id: sr-1, review_scope: in, title: "\"existing clients and tests keep working\" is false: tests/Saved-labels scenarios contradict R7/R12/R16", body: "tests/test_web_app.py:182,183,239,240,275, tests/test_label_generator.py:24-25 and Acceptance_Tests.md:129,141,179 conflict with mode-1 output, the v2 file shape and re-print bumping. Fix: list the rewritten expectations, decide what create_label_image returns, reword as 'payloads stay accepted'."}
+  - {kind: finding, id: sr-2, review_scope: in, title: "GET/DELETE /memory compat alias response shape undefined", body: "web_app.py:172-184 returns flat entries today; v2 has no text/font_size/align. Fix: define the alias shape and order, and test it."}
+  - {kind: finding, id: sr-3, review_scope: in, title: "Pre-rotation ignores CUPS fit-to-page/auto-rotation", body: "printer_service.py:130-134 sends fit-to-page and no orientation-requested; cups-filters may auto-rotate again. Fix: pin orientation-requested=3, test the options."}
+  - {kind: finding, id: sr-4, review_scope: in, title: "portrait = stock width x height mislabels wide stocks (11354, 99012)", body: "config.py:18-23,42-47. Fix: name orientation by the canvas shape and derive it per stock."}
+  - {kind: finding, id: sr-5, review_scope: in, title: "No rule for a missing family; DEFAULT_FONT_PATH fate unstated", body: "config.py:59, label_generator.py:81-85. Fix: fallback chain plus a substitution flag; replace DEFAULT_FONT_PATH."}
+  - {kind: finding, id: sr-6, review_scope: in, title: "font_size_pt must allow fractions for a faithful migration", body: "40 px = 9.6 pt. Fix: float pt, round(pt*dpi/72), same conversion on the compat path, round-trip test."}
+  - {kind: finding, id: sr-7, review_scope: in, title: "DejaVu is not OFL; fixture contradicts the fonts-apt-scan wording", body: "Fix: use Liberation Sans (OFL) as the fixture and ship its licence."}
+  - {kind: finding, id: sr-8, review_scope: in, title: "CI test job lacks the cups module imported at load", body: "printer_service.py:11, web_app.py:16,20. Fix: a session-wide conftest fake cups."}
+  - {kind: finding, id: sr-9, review_scope: in, title: "Thumbnail route and /icons missing from routes/R13/Testing", body: "Fix: define both with their shapes; add route tests."}
+  - {kind: finding, id: sr-10, review_scope: in, title: "History-write failure after CUPS accepted the job reports a failed print", body: "Fix: 500 with no print when the pre-print save fails; 200 plus a warning when the post-print write fails."}
+  - {kind: finding, id: sr-11, review_scope: in, title: "Missing-image outline in the preview breaks preview == print", body: "Fix: report missing:true; the overlay draws the outline, never the PNG."}
+  - {kind: finding, id: sr-12, review_scope: in, title: "\"contenteditable textarea\" contradicts itself", body: "Fix: pick a <textarea>."}
+  - {kind: finding, id: sr-13, review_scope: in, title: "/render response format unspecified", body: "Fix: give the JSON shape and the bbox convention."}
+  - {kind: finding, id: sr-14, review_scope: out, title: "No volume for saved_labels.json/images; rebuild-redeploy drops history", body: "docker-compose.yml has no volumes; LABEL_MEMORY_FILE defaults to a relative path (web_app.py:21). Follow-up: a named volume plus LABEL_MEMORY_FILE=/data/saved_labels.json."}
+  - {kind: finding, id: sr-15, review_scope: in, title: "Label name stored and searched but never settable", body: "Fix: a name field plus name in PUT/POST, or always derive it."}
+resolves:
+  - {id: sr-1, state: fixed, body: "create_label_image converts render output to RGB (pure black/white), so test_label_generator stays valid; the Testing section gains a table of rewritten expectations; Print and preview now says payloads stay accepted."}
+  - {id: sr-2, state: fixed, body: "R13 defines GET /memory as v2 labels plus flat text/font_size(px)/align in the default sort; DELETE returns {success, remaining} in the same shape."}
+  - {id: sr-3, state: fixed, body: "R11 and Design pin orientation-requested=3 beside fit-to-page; the options are unit-tested for both orientations."}
+  - {id: sr-4, state: fixed, body: "R11: orientation named by canvas shape (portrait = taller than wide); defaults to the stock's shape; the canvas formula is in the schema notes."}
+  - {id: sr-5, state: fixed, body: "R1 replaces DEFAULT_FONT_PATH with DEFAULT_FONT_FAMILY; R3 gives the fallback chain with font_substituted; Error handling and Testing updated."}
+  - {id: sr-6, state: fixed, body: "R2: fractional points; schema notes use round(pt*dpi/72) and the same conversion on the compat path, with a round-trip test."}
+  - {id: sr-7, state: fixed, body: "The fixture is now Liberation Sans 2.x (OFL 1.1) with its LICENSE beside it."}
+  - {id: sr-8, state: fixed, body: "Infra: tests/conftest.py installs a session-wide fake cups module."}
+  - {id: sr-9, state: fixed, body: "R5 defines GET /icons [{name,url}]; R13 defines the thumbnail (100 DPI); the full route list is in the web_app row; route tests listed."}
+  - {id: sr-10, state: fixed, body: "R16, Print and preview, and Error handling: a pre-print save failure gives 500 and no print; a post-print history-write failure gives 200 plus a warning."}
+  - {id: sr-11, state: fixed, body: "R8 adds missing:true; nothing is drawn in the PNG; the editor overlay outlines the block."}
+  - {id: sr-12, state: fixed, body: "R10 and Editor UI specify a <textarea> with plain \\n text."}
+  - {id: sr-13, state: fixed, body: "R8 gives the full /render JSON shape and the bbox convention."}
+  - {id: sr-14, state: out-of-scope, body: "Pre-existing: saved_labels.json already has no volume before this change (docker-compose.yml, web_app.py:21); this change only places images beside it, and a container restart keeps both."}
+  - {id: sr-15, state: fixed, body: "New R25: an editor name field, name allowed in POST/PUT, defaulted from the first text line when empty; the Toolbar lists the field."}
+acceptance:
+  - {id: ldx-label-name, capability: label-history, acceptance: "A saved label can be named and renamed in the editor; an unnamed label takes its first text line as its name.", origin: ["Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R25"], status: not-implemented}
+evidence: {review: spec-review-r1, reviewer: aab6ea1b9a1dffcc2}
