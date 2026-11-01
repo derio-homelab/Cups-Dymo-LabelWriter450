@@ -1,0 +1,61 @@
+schema_version: 2
+run: 2026-11-01-feat-label-designer-ux
+captures:
+- host: h-44a16270
+  harness: claude-code
+  mode: host-worktree
+  captured_at: '2026-11-01T18:43:20+00:00'
+  at:
+  - resolve:brainstorm
+  sessions:
+  - session: 11e6106b-2cce-4dbf-9b51-79b7aae10877
+    role: main
+    models:
+      claude-opus-5-5:
+        input: 40
+        cache_write: 94156
+        cache_read: 1772006
+        output: 23743
+        usd: null
+        usd_source: none
+    activity:
+      implementation:
+        usd: null
+        turns: 3
+      other:
+        usd: null
+        turns: 7
+      paperwork:
+        usd: null
+        turns: 10
+    steps:
+      (outside run):
+        usd: null
+        turns: 4
+        input: 8
+        cache_write: 53437
+        cache_read: 266549
+        output: 1133
+      brainstorm:
+        usd: null
+        turns: 15
+        input: 32
+        cache_write: 40719
+        cache_read: 1505457
+        output: 22610
+    steps_by_role:
+      main:
+        (outside run):
+          usd: null
+          turns: 4
+          input: 8
+          cache_write: 53437
+          cache_read: 266549
+          output: 1133
+        brainstorm:
+          usd: null
+          turns: 15
+          input: 32
+          cache_write: 40719
+          cache_read: 1505457
+          output: 22610
