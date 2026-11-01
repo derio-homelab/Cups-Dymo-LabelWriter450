@@ -191,6 +191,7 @@ Existing expectations this change deliberately rewrites:
 ## Verification
 
 gate: tester
+
 - ldx-print-orientation: live — whether landscape text reads the right way on 30252 Address and 11354 Multipurpose stock is only visible on paper from the real LabelWriter 450
 - ldx-print-mono: live — how threshold vs dither output looks on thermal paper can only be judged on a physical print
 
@@ -207,11 +208,9 @@ Post-merge, operator-driven, on the real LabelWriter 450:
    and match the preview.
 6. Restart the container; the history still lists the labels with their images and
    orientation; Re-print one from history.
-</content>
-</invoke>
 
 ## Implementation Plans
 
 | Plan | Repo | File | Depends on |
-|------|------|------|------------|
+| --- | --- | --- | --- |
 | 2026-11-01-label-designer-ux | `derio-homelab/Cups-Dymo-LabelWriter450` | `2026-11-01-label-designer-ux` | — |
