@@ -85,3 +85,113 @@ route handlers share _doc_from_request/_png_data_url helpers from the start; not
 ### no-refactor-p1-t8 · discovery · no-refactor-because P1.T8 (phase 1)
 
 single Dockerfile package-list edit; nothing to clean
+
+<!-- fr:journal kind=review scope=plan id=p1-review-r1 created=2026-11-01T19:26:29+00:00 phase=1 -->
+### p1-review-r1 · review · Phase 1 code review: 10 findings (9 in, 1 out) (phase 1)
+
+A dispatched general-purpose reviewer (superpowers:requesting-code-review template) reviewed bb908be..39ba726 against the spec and plan phase 1, ran the suite (137 passed) and probe scripts. Findings raised: p1-r1 to p1-r9 (in), p1-r10 (out). The orchestrator verified each against the code (receiving-code-review), and the implementer fixed p1-r1 to p1-r9 in 90e4d46, e9f8fe7 and 21395e8, each with a test; the suite is 173 passed.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r1 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=in -->
+### p1-r1 · finding [open] (reviewer: in scope) · Text rasterization still a render DoS; only the global MAX_IMAGE_PIXELS blocked huge lines (as a 500) (phase 1)
+
+label_generator.py _draw_text rasterized every line at full size. Fix: skip off-canvas lines, per-block raster budget leading to overflow; the bomb guard is scoped to image decode.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r2 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=in -->
+### p1-r2 · finding [open] (reviewer: in scope) · Overflow ignored horizontal off-canvas extent (phase 1)
+
+label_generator.py:89-94. Fix: check the line x extent; width_mm=None = canvas − x − margin.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r3 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=in -->
+### p1-r3 · finding [open] (reviewer: in scope) · Validation accepted inf/nan/huge coords and wrong types (500s) (phase 1)
+
+document.py _number. Fix: isfinite, coordinate bounds, type checks; 400.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r4 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=in -->
+### p1-r4 · finding [open] (reviewer: in scope) · Image blocks never reported overflow (phase 1)
+
+label_generator.py:138. Fix: compare the pasted box with the canvas.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r5 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=in -->
+### p1-r5 · finding [open] (reviewer: in scope) · Malformed SVG accepted at upload (phase 1)
+
+images.py store_upload only sniffed. Fix: probe-rasterize at upload.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r6 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=in -->
+### p1-r6 · finding [open] (reviewer: in scope) · Raster uploads fully decoded and RGBA-converted before downscale (phase 1)
+
+images.py:173-181. Fix: draft()/reduce before convert.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r7 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=in -->
+### p1-r7 · finding [open] (reviewer: in scope) · open_font reloaded the TTF on every layout (phase 1)
+
+fonts.py:148. Fix: lru_cache.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r8 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=in -->
+### p1-r8 · finding [open] (reviewer: in scope) · Compat routes changed behaviour undocumented (unknown align, whitespace-only text → 400) (phase 1)
+
+Kept the stricter behaviour; documented in the spec's rewrite table.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r9 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=in -->
+### p1-r9 · finding [open] (reviewer: in scope) · Tests workflow installed unpinned deps (phase 1)
+
+.github/workflows/Tests.yaml. Fix: pin to the pyproject constraints.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r10 created=2026-11-01T19:26:29+00:00 phase=1 state=open review_scope=out -->
+### p1-r10 · finding [open] (reviewer: out of scope) · copies unbounded (negative/zero/huge) passed to CUPS (phase 1)
+
+Pre-existing: v1 /print did int(data.get('copies', 1)) with no bounds (web_app.py at bb908be).
+
+<!-- fr:journal kind=finding scope=plan id=p1-r1-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-r1 -->
+### p1-r1-resolved · finding [fixed] · resolves p1-r1: Text rasterization still a render DoS; only the global MAX_IMAGE_PIXELS blocked huge lines (as a 500) (phase 1)
+
+90e4d46 — test_hostile_doc_renders_fast_without_exceptions, test_offcanvas_lines_are_skipped, test_hostile_text_doc_never_500, test_pillow_global_bomb_limit_is_not_changed.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r2-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-r2 -->
+### p1-r2-resolved · finding [fixed] · resolves p1-r2: Overflow ignored horizontal off-canvas extent (phase 1)
+
+90e4d46 — test_horizontal_extent_flags_overflow[50/-30], test_centered_block_straddling_left_edge_overflows, test_default_width_is_canvas_minus_x_minus_margin.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r3-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-r3 -->
+### p1-r3-resolved · finding [fixed] · resolves p1-r3: Validation accepted inf/nan/huge coords and wrong types (500s) (phase 1)
+
+90e4d46 — test_non_finite_out_of_range_and_wrong_types_rejected, test_render_rejects_hostile_numbers_with_400, test_render_rejects_wrong_types_with_400.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r4-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-r4 -->
+### p1-r4-resolved · finding [fixed] · resolves p1-r4: Image blocks never reported overflow (phase 1)
+
+90e4d46 — test_image_leaving_canvas_overflows.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r5-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-r5 -->
+### p1-r5-resolved · finding [fixed] · resolves p1-r5: Malformed SVG accepted at upload (phase 1)
+
+90e4d46 — test_junk_svg_upload_refused.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r6-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-r6 -->
+### p1-r6-resolved · finding [fixed] · resolves p1-r6: Raster uploads fully decoded and RGBA-converted before downscale (phase 1)
+
+90e4d46 — test_raster_is_downscaled_before_rgba_convert, test_jpeg_uses_draft_mode.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r7-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-r7 -->
+### p1-r7-resolved · finding [fixed] · resolves p1-r7: open_font reloaded the TTF on every layout (phase 1)
+
+90e4d46 — test_opened_fonts_are_cached.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r8-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-r8 -->
+### p1-r8-resolved · finding [fixed] · resolves p1-r8: Compat routes changed behaviour undocumented (unknown align, whitespace-only text → 400) (phase 1)
+
+e9f8fe7 — both rows added to the spec's deliberate-rewrite table.
+
+<!-- fr:journal kind=finding scope=plan id=p1-r9-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-r9 -->
+### p1-r9-resolved · finding [fixed] · resolves p1-r9: Tests workflow installed unpinned deps (phase 1)
+
+21395e8 — pinned pip install; suite passes on the pinned versions locally (Python 3.12).
+
+<!-- fr:journal kind=finding scope=plan id=p1-r10-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=open resolves=p1-r10 out_of_scope=true -->
+### p1-r10-resolved · finding [out-of-scope] · resolves p1-r10: copies unbounded (negative/zero/huge) passed to CUPS (phase 1)
+
+Not caused by this change: the v1 /print already passed int(copies) to CUPS unbounded. Note: document.py now rejects non-integer copies (test_bad_copies_rejected) but the range bound remains a follow-up.
+
+<!-- fr:journal kind=finding scope=plan id=p1-f5-resolved created=2026-11-01T19:26:29+00:00 phase=1 state=fixed resolves=p1-f5 -->
+### p1-f5-resolved · finding [fixed] · resolves p1-f5: Static-Analysis markdownlint is red on generated docs (phase 1)
+
+The executor tagged this out of scope, but the failing markdown (spec, journals, acceptance report) was added by this branch, so this change caused it. Fixed in 597bfd0 (.markdownlintignore for fr-generated markdown, spec lint fixes); markdownlint-cli 0.50.0 is clean.
