@@ -46,7 +46,7 @@ tasks:
   steps:
   - id: P3.T3.S1
     text: |-
-      Overlays per block from `bbox_mm`: click text → `<textarea>` over the box (Esc cancels, blur/Ctrl+Enter-inside commits, \n newlines); pointer-drag moves (mm delta = px delta ÷ px-per-mm, clamped so the block keeps ≥ 1 mm on the label); image corner handle scales (clamped 2 mm … label width); arrow keys nudge 0.5 mm when a block is selected and no textarea is focused. Each change triggers the debounced render.
+      Overlays per block from `bbox_mm`: selecting a text overlay (pointerdown) opens a `<textarea>` over the box (Esc cancels, blur/Ctrl+Enter-inside commits, \n newlines); pointer-drag moves (mm delta = px delta ÷ px-per-mm, clamped so the block keeps ≥ 1 mm on the label); image corner handle scales (clamped 2 mm … label width); arrow keys nudge 0.5 mm when a block is selected and no textarea is focused. Each change triggers the debounced render.
 - number: 4
   title: History panel (R17, R25 UI)
   steps:

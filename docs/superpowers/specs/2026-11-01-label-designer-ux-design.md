@@ -32,7 +32,6 @@ R14. Updating a saved label keeps its `id` and sets a new `updated_at`; Duplicat
 R15. Starred labels sort above unstarred ones under every sort, and the star state is persisted.
 R16. Printing a design opened from history saves it in place, then prints it, and bumps that entry's `last_printed_at` and `print_count`; printing an unsaved design bumps the existing entry whose content (blocks, stock, orientation) is identical, otherwise creates a new entry; the response names the entry, and the editor keeps editing it. If saving fails before printing, nothing prints and the call fails (500); if the history write fails after CUPS accepted the job, the call succeeds with the job id and a `warning` that history was not updated.
 R17. A history panel, collapsible, lists saved labels with a renderer-made thumbnail each, search, sort, a *Starred only* filter, a star toggle, Open (re-fills the editor), Duplicate, Re-print without opening, a checkbox per label, select-all and Delete of the selection — implementing the *Saved labels* scenarios of `Acceptance_Tests.md`, which this change rewrites for the block model, re-print bumping and starred-first sorting (see Testing).
-R25. The editor has a name field for the label; a label saved with an empty name gets the first non-empty line of its first text block, and renaming is a normal in-place update.
 R18. Ctrl/⌘+Enter prints and Ctrl/⌘+P re-renders the preview (suppressing the browser's print dialog).
 R19. The editor shows a printer status badge from `/status`, toast messages for print success and failure, and an error for a block that overflows the label; a per-block *shrink to fit* option reduces its size (down to 6 pt) until it fits instead.
 R20. The page is usable at 360 px width, follows the system dark/light scheme with a manual toggle, has a copies stepper (1–99), and remembers the last-used stock, font and orientation in the browser.
@@ -40,6 +39,7 @@ R21. The legacy top-level `web_app/` is removed, leaving one UI.
 R22. The Docker image installs the fonts (`fonts-dejavu-core`, `fonts-liberation`, `fonts-noto-core`) and the SVG rasterizer (`python3-cairosvg`), and `docker build` stays green in CI.
 R23. CI runs the pytest suite on every push.
 R24. `Acceptance_Tests.md` gains scenarios for fonts, images, preview, orientation, history, stars and general UX.
+R25. The editor has a name field for the label; a label saved with an empty name gets the first non-empty line of its first text block, and renaming is a normal in-place update.
 
 ## Design
 
