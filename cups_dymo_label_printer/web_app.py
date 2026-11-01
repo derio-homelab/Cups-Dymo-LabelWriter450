@@ -17,7 +17,7 @@ from . import fonts, images
 from .document import LabelDoc, TextBlock, ImageBlock, canvas_mm, from_flat
 from .label_generator import render
 from .printer_service import PrinterService
-from .store import LabelNotFound, LabelStore, StoreError, flat_fields
+from .store import DEFAULT_SORT, LabelNotFound, LabelStore, StoreError, flat_fields
 
 
 UPLOAD_OVERHEAD_BYTES = 64 * 1024  # multipart framing on top of the file itself
@@ -28,6 +28,7 @@ printer_service = PrinterService()
 _MEMORY_FILE = os.getenv('LABEL_MEMORY_FILE', 'saved_labels.json')
 store = LabelStore(_MEMORY_FILE)
 log = logging.getLogger(__name__)
+THUMBNAIL_DPI = 100
 HISTORY_WARNING = 'Printed, but the label history could not be updated'
 
 
@@ -146,18 +147,15 @@ def preview():
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
 
-def _print_error(doc: LabelDoc):
-    """A 400 response if ``doc`` cannot be printed, plus its render; else (None, render)."""
+def _render_for_print(doc: LabelDoc):
+    """Render ``doc`` for the printer; ValueError (a 400) if it has nothing to print."""
     if not _has_content(doc):
-        return jsonify({'success': False, 'error': 'No text provided'}), None
+        raise ValueError('No text provided')
     result = render(doc)
     for block in result.blocks:
         if block['missing']:
-            return jsonify({
-                'success': False,
-                'error': f"Image missing for block {block['id']}",
-            }), None
-    return None, result
+            raise ValueError(f"Image missing for block {block['id']}")
+    return result
 
 
 def _print_and_record(doc: LabelDoc, label_id: Optional[str], result, saved=None):
@@ -194,9 +192,7 @@ def print_label():
         doc.copies = int(data.get('copies', doc.copies))
         label_id = data.get('id') or None
 
-        error, result = _print_error(doc)
-        if error is not None:
-            return error, 400
+        result = _render_for_print(doc)
 
         saved = None
         if label_id is not None:
@@ -233,16 +229,133 @@ def _with_flat_fields(labels: list) -> list:
 def memory():
     """Compatibility alias of ``/labels``: v2 labels plus the flat v1 fields (R13)."""
     if request.method == 'DELETE':
-        data = request.get_json(silent=True) or {}
-        ids = data.get('ids', [])
-        if not isinstance(ids, list):
-            return jsonify({'success': False, 'error': 'ids must be a list'}), 400
         try:
-            store.delete([str(i) for i in ids])
+            store.delete(_ids_from_request())
+        except ValueError as e:
+            return _fail(str(e), 400)
         except StoreError as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return _fail(str(e), 500)
         return jsonify({'success': True, 'remaining': _with_flat_fields(store.list())})
     return jsonify(_with_flat_fields(store.list()))
+
+
+def _fail(error: str, status: int):
+    return jsonify({'success': False, 'error': error}), status
+
+
+def _label_route(handler):
+    """Map store/validation errors of a ``/labels`` handler to 404 / 400 / 500."""
+    def wrapped(*args, **kwargs):
+        try:
+            return handler(*args, **kwargs)
+        except LabelNotFound:
+            return _fail('Label not found', 404)
+        except StoreError as e:
+            return _fail(str(e), 500)
+        except ValueError as e:
+            return _fail(str(e), 400)
+        except RuntimeError as e:  # CUPS
+            return _fail(str(e), 500)
+    wrapped.__name__ = handler.__name__
+    return wrapped
+
+
+def _request_doc() -> LabelDoc:
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise ValueError('Request body must be a JSON object')
+    return LabelDoc.from_json(data.get('doc', data))
+
+
+def _ids_from_request() -> list:
+    ids = (request.get_json(silent=True) or {}).get('ids', [])
+    if not isinstance(ids, list):
+        raise ValueError('ids must be a list')
+    return [str(i) for i in ids]
+
+
+@app.route('/labels', methods=['GET'])
+@_label_route
+def list_labels():
+    """Saved labels: ``q`` searches name + text, ``sort``, ``starred`` filters (R13, R15)."""
+    starred = request.args.get('starred', '').lower() in ('1', 'true', 'yes')
+    labels = store.list(q=request.args.get('q'),
+                        sort=request.args.get('sort') or DEFAULT_SORT,
+                        starred_only=starred)
+    return jsonify({'success': True, 'labels': labels})
+
+
+@app.route('/labels', methods=['POST'])
+@_label_route
+def create_label():
+    return jsonify({'success': True, 'label': store.create(_request_doc())}), 201
+
+
+@app.route('/labels', methods=['DELETE'])
+@_label_route
+def delete_labels():
+    return jsonify({'success': True, 'deleted': store.delete(_ids_from_request())})
+
+
+@app.route('/labels/<label_id>', methods=['GET'])
+@_label_route
+def get_label(label_id: str):
+    return jsonify({'success': True, 'label': store.get(label_id)})
+
+
+@app.route('/labels/<label_id>', methods=['PUT'])
+@_label_route
+def update_label(label_id: str):
+    """Save over an entry in place, name included (R14, R25)."""
+    return jsonify({'success': True, 'label': store.update(label_id, _request_doc())})
+
+
+@app.route('/labels/<label_id>', methods=['DELETE'])
+@_label_route
+def delete_label(label_id: str):
+    if not store.delete([label_id]):
+        raise LabelNotFound(label_id)
+    return jsonify({'success': True})
+
+
+@app.route('/labels/<label_id>/duplicate', methods=['POST'])
+@_label_route
+def duplicate_label(label_id: str):
+    return jsonify({'success': True, 'label': store.duplicate(label_id)}), 201
+
+
+@app.route('/labels/<label_id>/star', methods=['PUT'])
+@_label_route
+def star_label(label_id: str):
+    starred = (request.get_json(silent=True) or {}).get('starred')
+    if not isinstance(starred, bool):
+        raise ValueError('starred must be a boolean')
+    return jsonify({'success': True, 'label': store.set_star(label_id, starred)})
+
+
+@app.route('/labels/<label_id>/print', methods=['POST'])
+@_label_route
+def reprint_label(label_id: str):
+    """Re-print a saved label as stored (optionally with other ``copies``) and bump it."""
+    saved = store.get(label_id)
+    doc = LabelDoc.from_json(saved)
+    data = request.get_json(silent=True) or {}
+    try:
+        doc.copies = int(data.get('copies', doc.copies))
+    except (TypeError, ValueError):
+        raise ValueError('copies must be an integer') from None
+    return _print_and_record(doc, label_id, _render_for_print(doc), saved)
+
+
+@app.route('/labels/<label_id>/thumbnail.png', methods=['GET'])
+@_label_route
+def label_thumbnail(label_id: str):
+    """The renderer's output at 100 DPI; a missing image is simply absent (R13)."""
+    image = render(LabelDoc.from_json(store.get(label_id)), dpi=THUMBNAIL_DPI).image
+    buffered = BytesIO()
+    image.save(buffered, format='PNG')
+    buffered.seek(0)
+    return send_file(buffered, mimetype='image/png')
 
 
 def run_app(host: str = '0.0.0.0', port: int = 5000, debug: bool = False):

@@ -274,7 +274,9 @@ def test_persistence_loads_on_startup(monkeypatch, tmp_path):
     assert resp.status_code == 200
     data = resp.get_json()
     assert len(data) == 1
-    assert data[0]["text"] == "Seed"
+    assert data[0]["text"] == "Seed"  # flat compat field
+    assert data[0]["id"] == "abc"
+    assert data[0]["blocks"][0]["text"] == "Seed"  # migrated to v2
 
 
 # --- print flow (R16) -------------------------------------------------------
