@@ -111,9 +111,13 @@ rows:
       and restored.
     origin:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R11
-    levels: {}
-    status: not-implemented
-    notes: ''
+    levels:
+      unit:
+      - Cups-Dymo-LabelWriter450:tests/test_printer_service.py
+      - Cups-Dymo-LabelWriter450:tests/test_document.py
+      - Cups-Dymo-LabelWriter450:tests/test_render.py
+    status: ci
+    notes: canvas, media rotation and CUPS options covered by pytest
   - id: ldx-print-orientation
     capability: label-orientation
     acceptance: A label printed on 30252 Address and 11354 Multipurpose stock in either
