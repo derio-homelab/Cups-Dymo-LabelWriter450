@@ -387,6 +387,7 @@ def ux(browser, base, scratch):
 
     # Ctrl+P re-renders without the browser print dialog
     page.evaluate("() => { window.__prevented = null; window.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'p') window.__prevented = e.defaultPrevented; }); }")
+    settle(page)  # let the debounced render the print triggered (name fill) finish first
     before = len(requests)
     page.keyboard.press('Control+P')
     page.wait_for_function("() => window.__prevented === true")
@@ -442,12 +443,12 @@ def ux(browser, base, scratch):
     phone.close()
 
 
-def toasts_clear(page):
+def toasts_clear(page, allow_empty=False):
     """No toast bbox intersects any other visible button, input, select, textarea or link (p3-r24)."""
     controls = [(c.bounding_box(), c) for c in page.locator('button, input, select, textarea, a').all()
                 if c.is_visible() and not c.evaluate("e => !!e.closest('.toast')")]
     toasts = [t.bounding_box() for t in page.locator('[data-testid=toast]').all()]
-    assert toasts, 'no toast on screen'
+    assert toasts or allow_empty, 'no toast on screen'
     for tb in toasts:
         for rb, _ in controls:
             if rb is None:
@@ -580,6 +581,7 @@ def review_checks(browser, base):
     # p3-r12: a toast never covers a history action button
     page.locator('.label-row').first.locator('[data-testid=h-reprint]').click()
     page.wait_for_selector('[data-testid=toast]')
+    page.evaluate('() => window.scrollTo(0, 0)')
     t = page.locator('[data-testid=toast]').first.bounding_box()
     for b in page.locator('.row-actions button').all():
         r = b.bounding_box()
@@ -634,7 +636,8 @@ def review_checks(browser, base):
         for r in boxes:
             assert not (tb['x'] < r['x'] + r['width'] and r['x'] < tb['x'] + tb['width']
                         and tb['y'] < r['y'] + r['height'] and r['y'] < tb['y'] + tb['height']), 'toast covers a control'
-    assert page.evaluate("() => getComputedStyle(document.querySelector('.toasts')).position") == 'static'
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.toasts')).position") == 'sticky'
+    page.evaluate('() => window.scrollTo(0, 0)')
     toasts_clear(page)
 
     # p3-r20: landscape -> portrait after a nudge leaves nothing off the label
@@ -691,20 +694,43 @@ def review_checks(browser, base):
     assert js('d.doc.blocks[0].x_mm') >= 2 and js('d.doc.blocks[0].y_mm') >= 2
     page.click('[data-testid=orientation]')
 
-    # p3-r24: toasts live in a reserved strip; nothing moves and nothing is covered, on desktop and at 360 px
+    # p3-r24 / p3-r25: the toast strip is sticky: collapsed when empty, covering nothing at scroll 0,
+    # and inside the viewport wherever the page is scrolled - for success and for failure
     for viewport in (DESKTOP, PHONE):
         c2 = browser.new_context(viewport=viewport, color_scheme='light')
         p2 = new_page(c2)
         p2.goto(base + '/')
         p2.wait_for_selector('.label-row')
-        doc_top = lambda: p2.evaluate("() => document.querySelector('.workspace').getBoundingClientRect().top + window.scrollY")
-        top = doc_top()
+        p2.wait_for_function("() => !document.querySelector('[data-testid=toast]')", timeout=15000)
+        assert p2.evaluate("() => document.querySelector('.toasts').getBoundingClientRect().height") == 0, 'empty strip takes space'
+        toasts_clear(p2, allow_empty=True)
         for _ in range(3):
             p2.locator('.label-row').first.locator('[data-testid=h-reprint]').click()
             p2.wait_for_timeout(120)
+        p2.evaluate('() => window.scrollTo(0, 0)')
         assert p2.locator('[data-testid=toast]').count() == 2
-        assert doc_top() == top, 'a toast moved the page'
-        toasts_clear(p2)
+        toasts_clear(p2)  # at scroll 0, nothing (toolbar included) is covered
+        vh = viewport['height']
+
+        def in_view(label):
+            for tb in [t.bounding_box() for t in p2.locator('[data-testid=toast]').all()]:
+                assert tb['y'] >= -0.5 and tb['y'] + tb['height'] <= vh + 0.5, (label, tb, vh)
+
+        p2.wait_for_function("() => !document.querySelector('[data-testid=toast]')", timeout=15000)
+        last = p2.locator('.label-row').last
+        last.scroll_into_view_if_needed()
+        p2.evaluate('() => window.scrollTo(0, document.body.scrollHeight)')
+        assert p2.evaluate('() => window.scrollY') > 0
+        last.locator('[data-testid=h-reprint]').click()
+        p2.wait_for_selector('[data-testid=toast]')
+        in_view('success while scrolled')
+        p2.wait_for_function("() => !document.querySelector('[data-testid=toast]')", timeout=15000)
+        p2.route('**/labels/*/print', lambda r: r.fulfill(status=500, content_type='application/json',
+                                                           body='{"success": false, "error": "forced failure"}'))
+        last.locator('[data-testid=h-reprint]').click()
+        p2.wait_for_selector('[data-testid=toast].error')
+        in_view('failure while scrolled')
+        p2.unroute('**/labels/*/print')
         c2.close()
 
     # p3-r10: a failing history shows a friendly message and no empty-state text

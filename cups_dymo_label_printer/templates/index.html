@@ -68,7 +68,7 @@
         </div>
     </header>
 
-    <div class="toasts" data-testid="toasts" aria-live="polite" aria-atomic="false">
+    <div class="toasts" data-testid="toasts" :class="{empty: !toasts.length}" aria-live="polite" aria-atomic="false">
         <template x-for="t in toasts" :key="t.id">
             <div class="toast" :class="t.kind" :role="t.kind === 'error' ? 'alert' : 'status'" data-testid="toast">
                 <span x-text="t.text"></span>

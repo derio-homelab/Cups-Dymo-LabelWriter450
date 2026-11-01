@@ -78,7 +78,8 @@ body {
     padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--gap);
+    --gap: 12px;
 }
 
 h1, h2 { margin: 0; }
@@ -366,11 +367,22 @@ textarea { resize: vertical; width: 100%; }
 /* ---- toasts ---- */
 
 .toasts {
-    /* A reserved strip in the page flow: showing or hiding a message never moves anything. */
-    height: 52px;
+    /* In the page flow under the toolbar, and sticky so a message is on screen wherever the page is scrolled.
+       While empty it collapses to nothing (its margins cancel the flex gap). */
+    position: sticky;
+    top: 0;
+    z-index: 40;
     display: flex;
     gap: 8px;
+    padding-bottom: 6px;
+    background: var(--bg);
+}
+.toasts.empty {
+    height: 0;
+    padding: 0;
     overflow: hidden;
+    margin: calc(var(--gap) / -2) 0;
+    pointer-events: none;
 }
 .toast {
     flex: 1 1 0;
@@ -417,9 +429,9 @@ textarea { resize: vertical; width: 100%; }
 }
 
 @media (max-width: 560px) {
-    .toasts { height: 108px; flex-direction: column; }
-    .toast { flex: 0 0 auto; height: 50px; }
-    .app { padding: 8px; gap: 8px; }
+    .toasts { flex-direction: column; }
+    .toast { flex: 0 0 auto; }
+    .app { padding: 8px; --gap: 8px; }
     .toolbar { padding: 8px; }
     .field { flex: 1 1 140px; }
     .label-row { grid-template-columns: auto minmax(0, 1fr); }
