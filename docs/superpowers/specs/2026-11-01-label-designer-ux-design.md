@@ -185,6 +185,8 @@ Existing expectations this change deliberately rewrites:
 | `Acceptance_Tests.md` *Should store printed labels…* | remove + re-insert at top | re-print bumps `last_printed_at`; content match bumps instead of duplicating |
 | `Acceptance_Tests.md` *Should allow selecting a saved label…* | re-fills text/font_size/align | re-fills the editor's blocks, stock, orientation, copies, name |
 | `Acceptance_Tests.md` *Should load saved labels…* | most recent first | starred first, then the active sort (default last printed) |
+| `/print`, `/preview` with an unknown `align` | silently treated as centre | 400 (unknown alignment) |
+| `/print` with whitespace-only text | printed a blank label | 400 `No text provided` |
 
 `tests/test_label_generator.py:24-25` (RGB, white corner) stay valid through the wrapper.
 
