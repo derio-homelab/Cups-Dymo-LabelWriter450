@@ -206,9 +206,12 @@ rows:
     origin:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R22
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R23
-    levels: {}
-    status: not-implemented
-    notes: ''
+    levels:
+      int:
+      - Cups-Dymo-LabelWriter450:.github/workflows/Tests.yaml
+      - Cups-Dymo-LabelWriter450:.github/workflows/Build.yaml
+    status: ci
+    notes: Tests workflow runs pytest on every push; Build workflow builds the image
   - id: ldx-acceptance-doc
     capability: docs
     acceptance: Acceptance_Tests.md describes fonts, images, preview, orientation, history,
