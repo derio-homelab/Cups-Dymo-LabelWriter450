@@ -395,3 +395,258 @@ shortcuts, status polling and storage helpers were written as single small funct
 ### no-refactor-p3-t6 · discovery · no-refactor-because P3.T6 (phase 3)
 
 a deletion plus docs; nothing to clean
+
+<!-- fr:journal kind=review scope=plan id=p3-review-r1 created=2026-11-01T22:17:06+00:00 phase=3 -->
+### p3-review-r1 · review · Phase 3 code + visual review: 25 findings over 5 passes, all verified fixed (phase 3)
+
+A dispatched general-purpose reviewer (superpowers:requesting-code-review template) reviewed 0bc7793..a9358f6, then re-verified each fix round (0e19249, 76fdeb0, 08e5d44, 3439a07). Every pass re-ran scripts/capture_visual.py and the reviewer's own Playwright probes (limits, races, XSS, keyboard, failed fetches, localStorage throwing, dark at 360 px), opening every shot. Findings p3-r1 to p3-r25 were raised and all are verified fixed, with assertions in review_checks() or pytest tests. The final pass raised none. Vendored Alpine 3.14.1 matches the npm dist sha256. The orchestrator verified p3-r1, p3-r2 and p3-r16 against the code, and reclassified p3-r15 and p3-r16 from out to in scope, because store.duplicate and the renderer are this branch's code.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r1 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r1 · finding [open] (reviewer: in scope) · In-flight Save/Print reply reset editingId after Open; next Save overwrote the wrong label (phase 3)
+
+In-flight Save/Print reply reset editingId after Open; next Save overwrote the wrong label.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r2 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r2 · finding [open] (reviewer: in scope) · afterSave snapshotted the current doc; in-flight edits lost the unsaved marker (phase 3)
+
+afterSave snapshotted the current doc; in-flight edits lost the unsaved marker.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r3 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r3 · finding [open] (reviewer: in scope) · Ctrl/Cmd+Enter printed stale uncommitted number-field values (phase 3)
+
+Ctrl/Cmd+Enter printed stale uncommitted number-field values.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r4 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r4 · finding [open] (reviewer: in scope) · Bulk delete had no confirmation (phase 3)
+
+Bulk delete had no confirmation.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r5 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r5 · finding [open] (reviewer: in scope) · Dragging an auto-width text block lagged the pointer; glyphs could leave the label (phase 3)
+
+Dragging an auto-width text block lagged the pointer; glyphs could leave the label.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r6 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r6 · finding [open] (reviewer: in scope) · Corner-handle scale ignored label height; handle clipped (phase 3)
+
+Corner-handle scale ignored label height; handle clipped.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r7 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r7 · finding [open] (reviewer: in scope) · Open/New/reload discarded unsaved edits without asking (phase 3)
+
+Open/New/reload discarded unsaved edits without asking.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r8 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r8 · finding [open] (reviewer: in scope) · Committing the in-place textarea lost keyboard focus (phase 3)
+
+Committing the in-place textarea lost keyboard focus.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r9 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r9 · finding [open] (reviewer: in scope) · No maxlength 2000; unnamed render error (phase 3)
+
+No maxlength 2000; unnamed render error.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r10 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r10 · finding [open] (reviewer: in scope) · History error shown with the empty state; raw 'Failed to fetch' (phase 3)
+
+History error shown with the empty state; raw 'Failed to fetch'.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r11 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r11 · finding [open] (reviewer: in scope) · Empty names showed blank rows and aria-labels (phase 3)
+
+Empty names showed blank rows and aria-labels.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r12 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r12 · finding [open] (reviewer: in scope) · Toasts covered history row buttons (phase 3)
+
+Toasts covered history row buttons.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r13 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r13 · finding [open] (reviewer: in scope) · addImage placed new images over existing content (phase 3)
+
+addImage placed new images over existing content.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r14 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r14 · finding [open] (reviewer: in scope) · Matrix rows not moved after shipping the UI (phase 3)
+
+Matrix rows not moved after shipping the UI.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r15 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r15 · finding [open] (reviewer: in scope) · Duplicate kept an identical name (store.duplicate, this branch) (phase 3)
+
+Duplicate kept an identical name (store.duplicate, this branch).
+
+<!-- fr:journal kind=finding scope=plan id=p3-r16 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r16 · finding [open] (reviewer: in scope) · Image blocks painted opaque white over other content (renderer, this branch) (phase 3)
+
+Image blocks painted opaque white over other content (renderer, this branch).
+
+<!-- fr:journal kind=finding scope=plan id=p3-r17 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r17 · finding [open] (reviewer: in scope) · Confirm dialog did not take focus or trap Tab (phase 3)
+
+Confirm dialog did not take focus or trap Tab.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r18 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r18 · finding [open] (reviewer: in scope) · Scaling to max tripped a false overflow (phase 3)
+
+Scaling to max tripped a false overflow.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r19 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r19 · finding [open] (reviewer: in scope) · Stacked top-centre toasts covered the toolbar (phase 3)
+
+Stacked top-centre toasts covered the toolbar.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r20 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r20 · finding [open] (reviewer: in scope) · Frozen text width not re-clamped on stock/orientation change (phase 3)
+
+Frozen text width not re-clamped on stock/orientation change.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r21 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r21 · finding [open] (reviewer: in scope) · History actions enabled while busy; delete during print left a dangling editingId (phase 3)
+
+History actions enabled while busy; delete during print left a dangling editingId.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r22 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r22 · finding [open] (reviewer: in scope) · Dialog focus used a fixed 30 ms setTimeout (race; capture flake) (phase 3)
+
+Dialog focus used a fixed 30 ms setTimeout (race; capture flake).
+
+<!-- fr:journal kind=finding scope=plan id=p3-r23 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r23 · finding [open] (reviewer: in scope) · Images placed at x/y 0 or flush with an edge (corner clipping, false overflow) (phase 3)
+
+Images placed at x/y 0 or flush with an edge (corner clipping, false overflow).
+
+<!-- fr:journal kind=finding scope=plan id=p3-r24 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r24 · finding [open] (reviewer: in scope) · Bottom toasts covered Search/Sort and row controls at 360 px (phase 3)
+
+Bottom toasts covered Search/Sort and row controls at 360 px.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r25 created=2026-11-01T22:17:06+00:00 phase=3 state=open review_scope=in -->
+### p3-r25 · finding [open] (reviewer: in scope) · In-flow toast strip off-screen when scrolled (history action feedback invisible) (phase 3)
+
+In-flow toast strip off-screen when scrolled (history action feedback invisible).
+
+<!-- fr:journal kind=finding scope=plan id=p3-r1-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r1 -->
+### p3-r1-resolved · finding [fixed] · resolves p3-r1: In-flight Save/Print reply reset editingId after Open; next Save overwrote the wrong label (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r2-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r2 -->
+### p3-r2-resolved · finding [fixed] · resolves p3-r2: afterSave snapshotted the current doc; in-flight edits lost the unsaved marker (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r3-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r3 -->
+### p3-r3-resolved · finding [fixed] · resolves p3-r3: Ctrl/Cmd+Enter printed stale uncommitted number-field values (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r4-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r4 -->
+### p3-r4-resolved · finding [fixed] · resolves p3-r4: Bulk delete had no confirmation (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r5-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r5 -->
+### p3-r5-resolved · finding [fixed] · resolves p3-r5: Dragging an auto-width text block lagged the pointer; glyphs could leave the label (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r6-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r6 -->
+### p3-r6-resolved · finding [fixed] · resolves p3-r6: Corner-handle scale ignored label height; handle clipped (phase 3)
+
+Fixed in 0e19249, 76fdeb0; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r7-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r7 -->
+### p3-r7-resolved · finding [fixed] · resolves p3-r7: Open/New/reload discarded unsaved edits without asking (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r8-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r8 -->
+### p3-r8-resolved · finding [fixed] · resolves p3-r8: Committing the in-place textarea lost keyboard focus (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r9-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r9 -->
+### p3-r9-resolved · finding [fixed] · resolves p3-r9: No maxlength 2000; unnamed render error (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r10-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r10 -->
+### p3-r10-resolved · finding [fixed] · resolves p3-r10: History error shown with the empty state; raw 'Failed to fetch' (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r11-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r11 -->
+### p3-r11-resolved · finding [fixed] · resolves p3-r11: Empty names showed blank rows and aria-labels (phase 3)
+
+Fixed in 8ca37db/f82c538/0e19249; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r12-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r12 -->
+### p3-r12-resolved · finding [fixed] · resolves p3-r12: Toasts covered history row buttons (phase 3)
+
+Fixed in 0e19249, 08e5d44, 3439a07; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r13-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r13 -->
+### p3-r13-resolved · finding [fixed] · resolves p3-r13: addImage placed new images over existing content (phase 3)
+
+Fixed in 8ca37db, 76fdeb0, 08e5d44; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r14-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r14 -->
+### p3-r14-resolved · finding [fixed] · resolves p3-r14: Matrix rows not moved after shipping the UI (phase 3)
+
+Fixed in d554416..7246c69; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r15-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r15 -->
+### p3-r15-resolved · finding [fixed] · resolves p3-r15: Duplicate kept an identical name (store.duplicate, this branch) (phase 3)
+
+Fixed in c1b4851; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r16-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r16 -->
+### p3-r16-resolved · finding [fixed] · resolves p3-r16: Image blocks painted opaque white over other content (renderer, this branch) (phase 3)
+
+Fixed in c1b4851; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r17-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r17 -->
+### p3-r17-resolved · finding [fixed] · resolves p3-r17: Confirm dialog did not take focus or trap Tab (phase 3)
+
+Fixed in 76fdeb0, 08e5d44; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r18-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r18 -->
+### p3-r18-resolved · finding [fixed] · resolves p3-r18: Scaling to max tripped a false overflow (phase 3)
+
+Fixed in 76fdeb0; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r19-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r19 -->
+### p3-r19-resolved · finding [fixed] · resolves p3-r19: Stacked top-centre toasts covered the toolbar (phase 3)
+
+Fixed in 76fdeb0, 08e5d44; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r20-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r20 -->
+### p3-r20-resolved · finding [fixed] · resolves p3-r20: Frozen text width not re-clamped on stock/orientation change (phase 3)
+
+Fixed in 76fdeb0, 08e5d44; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r21-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r21 -->
+### p3-r21-resolved · finding [fixed] · resolves p3-r21: History actions enabled while busy; delete during print left a dangling editingId (phase 3)
+
+Fixed in 76fdeb0; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r22-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r22 -->
+### p3-r22-resolved · finding [fixed] · resolves p3-r22: Dialog focus used a fixed 30 ms setTimeout (race; capture flake) (phase 3)
+
+Fixed in 08e5d44; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r23-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r23 -->
+### p3-r23-resolved · finding [fixed] · resolves p3-r23: Images placed at x/y 0 or flush with an edge (corner clipping, false overflow) (phase 3)
+
+Fixed in 08e5d44; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r24-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r24 -->
+### p3-r24-resolved · finding [fixed] · resolves p3-r24: Bottom toasts covered Search/Sort and row controls at 360 px (phase 3)
+
+Fixed in 08e5d44; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
+
+<!-- fr:journal kind=finding scope=plan id=p3-r25-resolved created=2026-11-01T22:17:06+00:00 phase=3 state=fixed resolves=p3-r25 -->
+### p3-r25-resolved · finding [fixed] · resolves p3-r25: In-flow toast strip off-screen when scrolled (history action feedback invisible) (phase 3)
+
+Fixed in 3439a07; verified by the reviewer's re-run capture and probes; asserted in scripts/capture_visual.py review_checks() or pytest.
