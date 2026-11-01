@@ -655,3 +655,8 @@ Fixed in 3439a07; verified by the reviewer's re-run capture and probes; asserted
 ### p1-r10-resolved-2 · finding [deferred → https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/5] · resolves p1-r10: copies unbounded (negative/zero/huge) passed to CUPS (phase 1)
 
 Filed at deliver as https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/5.
+
+<!-- fr:journal kind=finding scope=plan id=p2-r8-resolved-2 created=2026-11-01T22:24:49+00:00 phase=2 state=open resolves=p2-r8 tracked_by=https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/6 -->
+### p2-r8-resolved-2 · finding [deferred → https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/6] · resolves p2-r8: History file has no persistent volume; a future volume must mount a directory (os.replace over a single-file bind mount fails with EBUSY) (phase 2)
+
+Filed at deliver as https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/6.
