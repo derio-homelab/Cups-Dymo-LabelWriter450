@@ -154,6 +154,15 @@ rows:
       - toggle a star and see it move to the top
       - select-all then delete
       - multi-select delete
+  - id: ldx-label-name
+    capability: label-history
+    acceptance: A saved label can be named and renamed in the editor; an unnamed label
+      takes its first text line as its name.
+    origin:
+    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R25
+    levels: {}
+    status: not-implemented
+    notes: ''
   - id: ldx-ux
     capability: label-ux
     acceptance: Ctrl/Cmd+Enter prints, Ctrl/Cmd+P previews, a printer status badge and

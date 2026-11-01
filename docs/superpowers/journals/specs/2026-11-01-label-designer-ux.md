@@ -145,3 +145,196 @@ decider: operator (round 1)
 Recorded in the spec's ## Verification: gate tester; ldx-print-orientation and ldx-print-mono are live.
 
 decider: operator (round 1)
+
+<!-- fr:journal kind=review scope=spec id=spec-review-r1 created=2026-11-01T18:49:06+00:00 -->
+### spec-review-r1 · review · independent spec review: 15 findings (14 in, 1 out)
+
+fr-spec-reviewer checked the spec against the 10 operator decisions (all honoured, with fixture-licence wording drift in sr-7) and against codebase reality, citing file:line for label_generator.py, config.py, web_app.py, printer_service.py, templates/index.html, setup.sh, Dockerfile, pyproject.toml, .github/workflows, web_app/, Acceptance_Tests.md and tests/. Findings raised: sr-1..sr-13 and sr-15 (in scope), sr-14 (out of scope).
+
+<!-- fr:journal kind=finding scope=spec id=sr-1 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-1 · finding [open] (reviewer: in scope) · "existing clients and tests keep working" is false: tests/Saved-labels scenarios contradict R7/R12/R16
+
+tests/test_web_app.py:182,183,239,240,275, tests/test_label_generator.py:24-25 and Acceptance_Tests.md:129,141,179 conflict with mode-1 output, the v2 file shape and re-print bumping. Fix: list the rewritten expectations, decide what create_label_image returns, reword as 'payloads stay accepted'.
+
+<!-- fr:journal kind=finding scope=spec id=sr-2 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-2 · finding [open] (reviewer: in scope) · GET/DELETE /memory compat alias response shape undefined
+
+web_app.py:172-184 returns flat entries today; v2 has no text/font_size/align. Fix: define the alias shape and order, and test it.
+
+<!-- fr:journal kind=finding scope=spec id=sr-3 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-3 · finding [open] (reviewer: in scope) · Pre-rotation ignores CUPS fit-to-page/auto-rotation
+
+printer_service.py:130-134 sends fit-to-page and no orientation-requested; cups-filters may auto-rotate again. Fix: pin orientation-requested=3, test the options.
+
+<!-- fr:journal kind=finding scope=spec id=sr-4 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-4 · finding [open] (reviewer: in scope) · portrait = stock width x height mislabels wide stocks (11354, 99012)
+
+config.py:18-23,42-47. Fix: name orientation by the canvas shape and derive it per stock.
+
+<!-- fr:journal kind=finding scope=spec id=sr-5 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-5 · finding [open] (reviewer: in scope) · No rule for a missing family; DEFAULT_FONT_PATH fate unstated
+
+config.py:59, label_generator.py:81-85. Fix: fallback chain plus a substitution flag; replace DEFAULT_FONT_PATH.
+
+<!-- fr:journal kind=finding scope=spec id=sr-6 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-6 · finding [open] (reviewer: in scope) · font_size_pt must allow fractions for a faithful migration
+
+40 px = 9.6 pt. Fix: float pt, round(pt*dpi/72), same conversion on the compat path, round-trip test.
+
+<!-- fr:journal kind=finding scope=spec id=sr-7 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-7 · finding [open] (reviewer: in scope) · DejaVu is not OFL; fixture contradicts the fonts-apt-scan wording
+
+Fix: use Liberation Sans (OFL) as the fixture and ship its licence.
+
+<!-- fr:journal kind=finding scope=spec id=sr-8 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-8 · finding [open] (reviewer: in scope) · CI test job lacks the cups module imported at load
+
+printer_service.py:11, web_app.py:16,20. Fix: a session-wide conftest fake cups.
+
+<!-- fr:journal kind=finding scope=spec id=sr-9 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-9 · finding [open] (reviewer: in scope) · Thumbnail route and /icons missing from routes/R13/Testing
+
+Fix: define both with their shapes; add route tests.
+
+<!-- fr:journal kind=finding scope=spec id=sr-10 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-10 · finding [open] (reviewer: in scope) · History-write failure after CUPS accepted the job reports a failed print
+
+Fix: 500 with no print when the pre-print save fails; 200 plus a warning when the post-print write fails.
+
+<!-- fr:journal kind=finding scope=spec id=sr-11 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-11 · finding [open] (reviewer: in scope) · Missing-image outline in the preview breaks preview == print
+
+Fix: report missing:true; the overlay draws the outline, never the PNG.
+
+<!-- fr:journal kind=finding scope=spec id=sr-12 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-12 · finding [open] (reviewer: in scope) · "contenteditable textarea" contradicts itself
+
+Fix: pick a <textarea>.
+
+<!-- fr:journal kind=finding scope=spec id=sr-13 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-13 · finding [open] (reviewer: in scope) · /render response format unspecified
+
+Fix: give the JSON shape and the bbox convention.
+
+<!-- fr:journal kind=finding scope=spec id=sr-14 created=2026-11-01T18:49:06+00:00 state=open review_scope=out -->
+### sr-14 · finding [open] (reviewer: out of scope) · No volume for saved_labels.json/images; rebuild-redeploy drops history
+
+docker-compose.yml has no volumes; LABEL_MEMORY_FILE defaults to a relative path (web_app.py:21). Follow-up: a named volume plus LABEL_MEMORY_FILE=/data/saved_labels.json.
+
+<!-- fr:journal kind=finding scope=spec id=sr-15 created=2026-11-01T18:49:06+00:00 state=open review_scope=in -->
+### sr-15 · finding [open] (reviewer: in scope) · Label name stored and searched but never settable
+
+Fix: a name field plus name in PUT/POST, or always derive it.
+
+<!-- fr:journal kind=finding scope=spec id=sr-1-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-1 -->
+### sr-1-resolved · finding [fixed] · resolves sr-1: "existing clients and tests keep working" is false: tests/Saved-labels scenarios contradict R7/R12/R16
+
+create_label_image converts render output to RGB (pure black/white), so test_label_generator stays valid; the Testing section gains a table of rewritten expectations; Print and preview now says payloads stay accepted.
+
+<!-- fr:journal kind=finding scope=spec id=sr-2-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-2 -->
+### sr-2-resolved · finding [fixed] · resolves sr-2: GET/DELETE /memory compat alias response shape undefined
+
+R13 defines GET /memory as v2 labels plus flat text/font_size(px)/align in the default sort; DELETE returns {success, remaining} in the same shape.
+
+<!-- fr:journal kind=finding scope=spec id=sr-3-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-3 -->
+### sr-3-resolved · finding [fixed] · resolves sr-3: Pre-rotation ignores CUPS fit-to-page/auto-rotation
+
+R11 and Design pin orientation-requested=3 beside fit-to-page; the options are unit-tested for both orientations.
+
+<!-- fr:journal kind=finding scope=spec id=sr-4-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-4 -->
+### sr-4-resolved · finding [fixed] · resolves sr-4: portrait = stock width x height mislabels wide stocks (11354, 99012)
+
+R11: orientation named by canvas shape (portrait = taller than wide); defaults to the stock's shape; the canvas formula is in the schema notes.
+
+<!-- fr:journal kind=finding scope=spec id=sr-5-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-5 -->
+### sr-5-resolved · finding [fixed] · resolves sr-5: No rule for a missing family; DEFAULT_FONT_PATH fate unstated
+
+R1 replaces DEFAULT_FONT_PATH with DEFAULT_FONT_FAMILY; R3 gives the fallback chain with font_substituted; Error handling and Testing updated.
+
+<!-- fr:journal kind=finding scope=spec id=sr-6-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-6 -->
+### sr-6-resolved · finding [fixed] · resolves sr-6: font_size_pt must allow fractions for a faithful migration
+
+R2: fractional points; schema notes use round(pt*dpi/72) and the same conversion on the compat path, with a round-trip test.
+
+<!-- fr:journal kind=finding scope=spec id=sr-7-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-7 -->
+### sr-7-resolved · finding [fixed] · resolves sr-7: DejaVu is not OFL; fixture contradicts the fonts-apt-scan wording
+
+The fixture is now Liberation Sans 2.x (OFL 1.1) with its LICENSE beside it.
+
+<!-- fr:journal kind=finding scope=spec id=sr-8-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-8 -->
+### sr-8-resolved · finding [fixed] · resolves sr-8: CI test job lacks the cups module imported at load
+
+Infra: tests/conftest.py installs a session-wide fake cups module.
+
+<!-- fr:journal kind=finding scope=spec id=sr-9-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-9 -->
+### sr-9-resolved · finding [fixed] · resolves sr-9: Thumbnail route and /icons missing from routes/R13/Testing
+
+R5 defines GET /icons [{name,url}]; R13 defines the thumbnail (100 DPI); the full route list is in the web_app row; route tests listed.
+
+<!-- fr:journal kind=finding scope=spec id=sr-10-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-10 -->
+### sr-10-resolved · finding [fixed] · resolves sr-10: History-write failure after CUPS accepted the job reports a failed print
+
+R16, Print and preview, and Error handling: a pre-print save failure gives 500 and no print; a post-print history-write failure gives 200 plus a warning.
+
+<!-- fr:journal kind=finding scope=spec id=sr-11-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-11 -->
+### sr-11-resolved · finding [fixed] · resolves sr-11: Missing-image outline in the preview breaks preview == print
+
+R8 adds missing:true; nothing is drawn in the PNG; the editor overlay outlines the block.
+
+<!-- fr:journal kind=finding scope=spec id=sr-12-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-12 -->
+### sr-12-resolved · finding [fixed] · resolves sr-12: "contenteditable textarea" contradicts itself
+
+R10 and Editor UI specify a <textarea> with plain \n text.
+
+<!-- fr:journal kind=finding scope=spec id=sr-13-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-13 -->
+### sr-13-resolved · finding [fixed] · resolves sr-13: /render response format unspecified
+
+R8 gives the full /render JSON shape and the bbox convention.
+
+<!-- fr:journal kind=finding scope=spec id=sr-14-resolved created=2026-11-01T18:49:06+00:00 state=open resolves=sr-14 out_of_scope=true -->
+### sr-14-resolved · finding [out-of-scope] · resolves sr-14: No volume for saved_labels.json/images; rebuild-redeploy drops history
+
+Pre-existing: saved_labels.json already has no volume before this change (docker-compose.yml, web_app.py:21); this change only places images beside it, and a container restart keeps both.
+
+<!-- fr:journal kind=finding scope=spec id=sr-15-resolved created=2026-11-01T18:49:06+00:00 state=fixed resolves=sr-15 -->
+### sr-15-resolved · finding [fixed] · resolves sr-15: Label name stored and searched but never settable
+
+New R25: an editor name field, name allowed in POST/PUT, defaulted from the first text line when empty; the Toolbar lists the field.
+
+<!-- fr:journal kind=decision scope=spec id=exit-baseline created=2026-11-01T18:49:07+00:00 -->
+### exit-baseline · decision · exit when spec-review resolved
+
+The exit when spec-review resolved; `fr verification set` and `deliver` compare against it.
+
+```yaml
+row_gates:
+  ldx-acceptance-doc: none
+  ldx-fonts: none
+  ldx-history-model: none
+  ldx-history-panel: none
+  ldx-image-build: none
+  ldx-images: none
+  ldx-label-name: none
+  ldx-live-preview: none
+  ldx-orientation: none
+  ldx-print-mono: tester
+  ldx-print-orientation: tester
+  ldx-single-ui: none
+  ldx-ux: none
+row_kinds:
+  ldx-acceptance-doc: none
+  ldx-fonts: none
+  ldx-history-model: none
+  ldx-history-panel: none
+  ldx-image-build: none
+  ldx-images: none
+  ldx-label-name: none
+  ldx-live-preview: none
+  ldx-orientation: none
+  ldx-print-mono: live
+  ldx-print-orientation: live
+  ldx-single-ui: none
+  ldx-ux: none
+run_gate: tester
+run_kind: none
+```
