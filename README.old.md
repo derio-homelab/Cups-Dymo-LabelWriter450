@@ -5,7 +5,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 <center>
-<img src= "docs/Languages And Tools.png">
+<img src="docs/Languages And Tools.png" alt="Languages and tools">
 </center>
 
 ## Summary
@@ -17,7 +17,7 @@ This repository contains a Dockerfile which runs CUPS on Raspberry Pi. This proj
 The architecture of this project is as follows:
 
 <center>
-<img src= "docs/Architecture.png">
+<img src="docs/Architecture.png" alt="Architecture diagram">
 </center>
 
 The key parts are as follows:

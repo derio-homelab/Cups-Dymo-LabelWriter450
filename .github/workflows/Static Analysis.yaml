@@ -34,7 +34,9 @@ jobs:
           hadolint --failure-threshold error --verbose *Dockerfile
       - name: Docker Compose Lint
         run: |
-          docker compose config  || { echo "Invalid Docker Compose file"; exit 1; }
+          # env_file .env is git-ignored; validate against the committed example.
+          cp .env.example .env
+          docker compose config --quiet || { echo "Invalid Docker Compose file"; exit 1; }
 
   Markdown_Lint_Check:
     name: Markdown Lint Check
