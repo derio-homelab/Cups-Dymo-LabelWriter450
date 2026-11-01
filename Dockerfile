@@ -1,5 +1,5 @@
 # Build stage - contains all build dependencies
-FROM debian:bullseye AS builder
+FROM debian:trixie AS builder
 
 # Install build dependencies
 RUN apt-get clean && apt-get update && apt-get install -y \
@@ -32,7 +32,7 @@ RUN cd ~/ && \
     make install
 
 # Runtime stage - only runtime dependencies
-FROM debian:bullseye
+FROM debian:trixie
 
 # Install only runtime dependencies
 RUN apt-get clean && apt-get update && apt-get install -y \
@@ -55,13 +55,19 @@ RUN apt-get clean && apt-get update && apt-get install -y \
     libcupsimage2 \
     python3 \
     python3-pip \
+    python3-venv \
     python3-pil \
     python3-cups \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Debian 12+ forbids pip into the system Python (PEP 668). Use a venv that still
+# sees the apt-installed python3-cups / python3-pil (--system-site-packages).
+RUN python3 -m venv --system-site-packages /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # Install Poetry temporarily to generate requirements
-RUN pip3 install --no-cache-dir poetry==1.6.1
+RUN pip install --no-cache-dir poetry==1.6.1
 
 # Copy compiled Dymo SDK from builder
 COPY --from=builder /usr/local/lib/libDymoSDK* /usr/local/lib/
@@ -88,8 +94,8 @@ COPY pyproject.toml /app/
 # Generate requirements.txt from pyproject.toml and install dependencies
 WORKDIR /app
 RUN poetry export -f requirements.txt --output requirements.txt --with dev --without-hashes \
-    && pip3 install --no-cache-dir -r requirements.txt \
-    && pip3 uninstall -y poetry
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y poetry
 
 # Set Python path to include our package
 ENV PYTHONPATH=/app
