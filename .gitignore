@@ -50,3 +50,6 @@ htmlcov/
 *~
 .DS_Store
 docs/acceptance/report.html
+
+# Visual-evidence scratch output
+scripts/tmp/

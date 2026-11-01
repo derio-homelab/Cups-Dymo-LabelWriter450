@@ -3,406 +3,357 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dymo Label Printer</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        
-        .header h1 {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-        
-        .header p {
-            opacity: 0.9;
-        }
-        
-        .form-container {
-            padding: 40px;
-        }
-        
-        .form-group {
-            margin-bottom: 25px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-        }
-        
-        input[type="text"],
-        textarea,
-        select,
-        input[type="number"] {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s;
-        }
-        
-        input[type="text"]:focus,
-        textarea:focus,
-        select:focus,
-        input[type="number"]:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        textarea {
-            resize: vertical;
-            min-height: 100px;
-            font-family: inherit;
-        }
-        
-        .row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        
-        .align-buttons {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .align-btn {
-            flex: 1;
-            padding: 10px;
-            border: 2px solid #e0e0e0;
-            background: white;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .align-btn.active {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
-        }
-        
-        .align-btn:hover {
-            border-color: #667eea;
-        }
-        
-        .button-group {
-            display: flex;
-            gap: 15px;
-            margin-top: 30px;
-        }
-        
-        button {
-            flex: 1;
-            padding: 15px 30px;
-            font-size: 16px;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        
-        .btn-preview {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .btn-preview:hover {
-            background: #5a6268;
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(108, 117, 125, 0.4);
-        }
-        
-        .btn-print {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        
-        .btn-print:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
-        }
-        
-        .btn-print:disabled,
-        .btn-preview:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .preview-container {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            display: none;
-        }
-        
-        .preview-container.show {
-            display: block;
-            animation: slideIn 0.3s ease;
-        }
-        
-        .preview-container h3 {
-            margin-bottom: 15px;
-            color: #333;
-        }
-        
-        .preview-image-wrapper {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        #preview-image {
-            max-width: 100%;
-            height: auto;
-            border: 1px solid #dee2e6;
-        }
-        
-        .message {
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 20px;
-            display: none;
-        }
-        
-        .message.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .message.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .message.show {
-            display: block;
-            animation: slideIn 0.3s ease;
-        }
-        
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-    </style>
+    <meta name="color-scheme" content="light dark">
+    <title>Dymo Label Designer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+    <script type="application/json" id="stocks-data">{{ label_sizes|tojson }}</script>
+    <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='vendor/alpine.min.js') }}"></script>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🏷️ Dymo Label Printer</h1>
-            <p>Design and print your labels</p>
+<div class="app" x-data="designer()" x-cloak @keydown.window="onKey($event)">
+
+    <header class="toolbar" role="toolbar" aria-label="Label settings">
+        <h1 class="brand">Label Designer</h1>
+
+        <div class="field grow">
+            <label for="label-name">Name</label>
+            <input id="label-name" data-testid="name" type="text" maxlength="120"
+                   x-model="doc.name" :placeholder="defaultName()">
         </div>
-        
-        <div class="form-container">
-            <form id="labelForm">
-                <div class="form-group">
-                    <label for="text">Label Text</label>
-                    <textarea id="text" name="text" placeholder="Enter your label text here..." required></textarea>
-                </div>
-                
-                <div class="row">
-                    <div class="form-group">
-                        <label for="label_size">Label Size</label>
-                        <select id="label_size" name="label_size">
-                            {% for code, info in label_sizes.items() %}
-                            <option value="{{ code }}">{{ info.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="font_size">Font Size</label>
-                        <input type="number" id="font_size" name="font_size" value="40" min="10" max="200">
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label>Text Alignment</label>
-                    <div class="align-buttons">
-                        <button type="button" class="align-btn" data-align="left">Left</button>
-                        <button type="button" class="align-btn active" data-align="center">Center</button>
-                        <button type="button" class="align-btn" data-align="right">Right</button>
-                    </div>
-                    <input type="hidden" id="align" name="align" value="center">
-                </div>
-                
-                <div class="form-group">
-                    <label for="copies">Number of Copies</label>
-                    <input type="number" id="copies" name="copies" value="1" min="1" max="99">
-                </div>
-                
-                <div class="button-group">
-                    <button type="button" class="btn-preview" id="previewBtn">👁️ Preview Label</button>
-                    <button type="submit" class="btn-print">🖨️ Print Label</button>
-                </div>
-                
-                <div id="preview-container" class="preview-container">
-                    <h3>Label Preview</h3>
-                    <div class="preview-image-wrapper">
-                        <img id="preview-image" alt="Label preview" />
-                    </div>
-                </div>
-                
-                <div id="message" class="message"></div>
-            </form>
+
+        <div class="field">
+            <label for="label-stock">Label stock</label>
+            <select id="label-stock" data-testid="stock" x-model="doc.label_size" @change="onStockChange()">
+                <template x-for="(s, key) in stocks" :key="key">
+                    <option :value="key" x-text="key + ' - ' + s.name"></option>
+                </template>
+            </select>
         </div>
+
+        <div class="field">
+            <span class="label-text" id="orientation-label">Orientation</span>
+            <button type="button" class="btn" data-testid="orientation"
+                    aria-labelledby="orientation-label orientation-value"
+                    @click="toggleOrientation()">
+                <span id="orientation-value" x-text="doc.orientation === 'portrait' ? 'Portrait' : 'Landscape'"></span>
+            </button>
+        </div>
+
+        <div class="field">
+            <label for="label-copies">Copies</label>
+            <div class="stepper" role="group" aria-label="Copies">
+                <button type="button" class="btn" aria-label="Fewer copies" data-testid="copies-dec"
+                        :disabled="doc.copies <= 1" @click="setCopies(doc.copies - 1)">&minus;</button>
+                <input id="label-copies" data-testid="copies" type="number" min="1" max="99" inputmode="numeric"
+                       :value="doc.copies" @change="setCopies($event.target.value, $event.target)">
+                <button type="button" class="btn" aria-label="More copies" data-testid="copies-inc"
+                        :disabled="doc.copies >= 99" @click="setCopies(doc.copies + 1)">+</button>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button type="button" class="btn" data-testid="save" @click="save()" :disabled="busy">Save</button>
+            <button type="button" class="btn primary" data-testid="print" @click="print()" :disabled="busy"
+                    title="Ctrl/Cmd+Enter">Print</button>
+            <span class="badge" data-testid="printer-badge" :class="printer.ok ? 'ok' : 'err'"
+                  role="status" :title="printer.detail">
+                <span aria-hidden="true" x-text="printer.ok ? '●' : '▲'"></span>
+                <span x-text="printer.text"></span>
+            </span>
+            <button type="button" class="btn" data-testid="theme" @click="toggleTheme()"
+                    :aria-pressed="theme === 'dark' ? 'true' : 'false'" aria-label="Dark mode">
+                <span aria-hidden="true" x-text="theme === 'dark' ? 'Dark' : 'Light'"></span>
+            </button>
+        </div>
+    </header>
+
+    <main class="workspace">
+        <section class="canvas-pane" aria-label="Label preview">
+            <p class="editing" data-testid="editing" aria-live="polite">
+                <template x-if="editingId">
+                    <span>Editing: <strong x-text="doc.name || 'Untitled'"></strong></span>
+                </template>
+                <template x-if="!editingId">
+                    <span>New label</span>
+                </template>
+                <span class="unsaved" data-testid="unsaved" x-show="dirty" x-cloak>&bull; Unsaved changes</span>
+                <button type="button" class="btn small" x-show="editingId" x-cloak @click="newLabel()">New label</button>
+            </p>
+
+            <div class="stage" x-ref="stage">
+                <div class="frame" data-testid="frame" x-ref="frame"
+                     :style="frameStyle()"
+                     :data-stock="doc.label_size" :data-orientation="doc.orientation"
+                     @pointerdown.self="deselect()">
+                    <img class="render" alt="Rendered label preview" draggable="false"
+                         x-show="rendered.image" :src="rendered.image || ''">
+                    <p class="empty-hint" x-show="!doc.blocks.length" x-cloak>
+                        Empty label - add a text or image block
+                    </p>
+
+                    <template x-for="b in doc.blocks" :key="b.id">
+                        <div class="overlay" :class="overlayClass(b)" :style="overlayStyle(b)"
+                             tabindex="0" role="button"
+                             :data-block="b.id" :data-type="b.type"
+                             :aria-label="blockLabel(b)"
+                             @pointerdown="startDrag($event, b)"
+                             @pointermove="onDrag($event)"
+                             @pointerup="endDrag($event)"
+                             @pointercancel="endDrag($event)"
+                             @focus="select(b.id)"
+                             @keydown.enter.self.prevent="startEdit(b)">
+                            <span class="handle" data-testid="handle" x-show="b.type === 'image' && selected === b.id"
+                                  aria-hidden="true"
+                                  @pointerdown.stop.prevent="startResize($event, b)"
+                                  @pointermove="onResize($event)"
+                                  @pointerup="endResize($event)"
+                                  @pointercancel="endResize($event)"></span>
+                        </div>
+                    </template>
+
+                    <textarea class="inplace" data-testid="inplace" x-ref="inplace"
+                              x-show="editing" x-cloak
+                              aria-label="Edit block text"
+                              :style="inplaceStyle()"
+                              :value="editing ? (doc.blocks.find(b => b.id === editing) || {}).text : ''"
+                              @input="onInplaceInput($event)"
+                              @blur="commitEdit()"
+                              @keydown.escape.stop.prevent="cancelEdit()"
+                              @keydown.ctrl.enter.stop.prevent="commitEdit()"
+                              @keydown.meta.enter.stop.prevent="commitEdit()"
+                              @pointerdown.stop></textarea>
+                </div>
+            </div>
+
+            <p class="size-note" data-testid="size-note">
+                <span x-text="canvasW + ' x ' + canvasH + ' mm'"></span>
+                <span x-show="rendering" x-cloak> - rendering...</span>
+            </p>
+            <p class="alert" role="alert" data-testid="render-error" x-show="renderError" x-cloak x-text="renderError"></p>
+            <ul class="problems" data-testid="problems" aria-label="Layout problems">
+                <template x-for="p in problems()" :key="p.key">
+                    <li :class="p.kind" x-text="p.text"></li>
+                </template>
+            </ul>
+        </section>
+
+        <aside class="inspector" aria-label="Block inspector">
+            <div class="add-row">
+                <button type="button" class="btn" data-testid="add-text" @click="addText()">Add text</button>
+                <label class="btn file-btn">
+                    Upload image
+                    <input type="file" data-testid="upload" accept="image/png,image/jpeg,image/svg+xml,.png,.jpg,.jpeg,.svg"
+                           @change="onUpload($event)">
+                </label>
+            </div>
+
+            <details class="icons" data-testid="icons">
+                <summary>Icons</summary>
+                <div class="icon-grid">
+                    <template x-for="ic in icons" :key="ic.name">
+                        <button type="button" class="icon-btn" :aria-label="'Add icon ' + ic.name" :title="ic.name"
+                                @click="addImage('icon:' + ic.name)">
+                            <img :src="ic.url" alt="" width="24" height="24">
+                        </button>
+                    </template>
+                </div>
+            </details>
+
+            <h2 class="h2">Blocks</h2>
+            <ol class="block-list" data-testid="block-list">
+                <template x-for="(b, i) in doc.blocks" :key="b.id">
+                    <li :class="{current: selected === b.id}">
+                        <button type="button" class="block-pick" :aria-pressed="selected === b.id ? 'true' : 'false'"
+                                @click="select(b.id)" x-text="blockLabel(b)"></button>
+                        <button type="button" class="btn small" :disabled="i === 0" :aria-label="'Move ' + blockLabel(b) + ' up'"
+                                @click="moveBlock(i, -1)">Up</button>
+                        <button type="button" class="btn small" :disabled="i === doc.blocks.length - 1"
+                                :aria-label="'Move ' + blockLabel(b) + ' down'" @click="moveBlock(i, 1)">Down</button>
+                        <button type="button" class="btn small danger" :aria-label="'Delete ' + blockLabel(b)"
+                                @click="removeBlock(b.id)">Delete</button>
+                    </li>
+                </template>
+            </ol>
+            <p class="muted" x-show="!doc.blocks.length" x-cloak>No blocks yet.</p>
+
+            <div class="props" data-testid="inspector-props">
+                <template x-if="!current()">
+                    <div>
+                        <h2 class="h2">Defaults</h2>
+                        <div class="field">
+                            <label for="default-font">Font for new text</label>
+                            <select id="default-font" data-testid="default-font" x-model="defaultFont" @change="rememberFont()">
+                                <template x-for="f in fonts" :key="f.family">
+                                    <option :value="f.family" x-text="f.family"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="current() && current().type === 'text'">
+                    <div>
+                        <h2 class="h2">Text block</h2>
+                        <div class="field">
+                            <label for="p-text">Text</label>
+                            <textarea id="p-text" data-testid="p-text" rows="3" x-model="current().text"></textarea>
+                        </div>
+                        <div class="field">
+                            <label for="p-font">Font</label>
+                            <select id="p-font" data-testid="p-font" x-model="current().font_family" @change="onFontChange()">
+                                <template x-for="f in fontChoices(current())" :key="f.family">
+                                    <option :value="f.family" x-text="f.family"></option>
+                                </template>
+                            </select>
+                            <span class="note" x-show="substituted(current())" x-cloak>Font not installed - a substitute is shown.</span>
+                        </div>
+                        <div class="field">
+                            <label for="p-size">Size (pt)</label>
+                            <input id="p-size" data-testid="p-size" type="number" step="0.5" min="1" :max="fontCap()"
+                                   :value="current().font_size_pt" @change="setSize($event.target.value, $event.target)">
+                        </div>
+                        <div class="field">
+                            <span class="label-text" id="p-style-label">Style</span>
+                            <div class="seg" role="group" aria-labelledby="p-style-label">
+                                <button type="button" class="btn toggle" data-testid="p-bold" aria-label="Bold"
+                                        :aria-pressed="current().bold ? 'true' : 'false'"
+                                        :disabled="!styleOk(current(), 'bold')"
+                                        :title="styleOk(current(), 'bold') ? 'Bold' : 'This font has no bold style'"
+                                        @click="current().bold = !current().bold"><b>B</b></button>
+                                <button type="button" class="btn toggle" data-testid="p-italic" aria-label="Italic"
+                                        :aria-pressed="current().italic ? 'true' : 'false'"
+                                        :disabled="!styleOk(current(), 'italic')"
+                                        :title="styleOk(current(), 'italic') ? 'Italic' : 'This font has no italic style'"
+                                        @click="current().italic = !current().italic"><i>I</i></button>
+                                <button type="button" class="btn toggle" data-testid="p-underline" aria-label="Underline"
+                                        :aria-pressed="current().underline ? 'true' : 'false'"
+                                        @click="current().underline = !current().underline"><u>U</u></button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <span class="label-text" id="p-align-label">Alignment</span>
+                            <div class="seg" role="radiogroup" aria-labelledby="p-align-label">
+                                <template x-for="a in ['left', 'center', 'right']" :key="a">
+                                    <button type="button" class="btn toggle" role="radio" :data-testid="'p-align-' + a"
+                                            :aria-checked="current().align === a ? 'true' : 'false'"
+                                            @click="current().align = a" x-text="a.charAt(0).toUpperCase() + a.slice(1)"></button>
+                                </template>
+                            </div>
+                        </div>
+                        <label class="check">
+                            <input type="checkbox" data-testid="p-shrink" x-model="current().shrink_to_fit">
+                            Shrink to fit (down to 6 pt)
+                        </label>
+                    </div>
+                </template>
+
+                <template x-if="current() && current().type === 'image'">
+                    <div>
+                        <h2 class="h2">Image block</h2>
+                        <p class="muted" x-text="current().src"></p>
+                        <div class="field">
+                            <label for="p-mono">Black and white</label>
+                            <select id="p-mono" data-testid="p-mono" x-model="current().mono">
+                                <option value="threshold">Threshold</option>
+                                <option value="dither">Dither</option>
+                            </select>
+                        </div>
+                        <div class="field" x-show="current().mono === 'threshold'">
+                            <label for="p-threshold">Threshold <output x-text="current().threshold"></output></label>
+                            <input id="p-threshold" data-testid="p-threshold" type="range" min="0" max="255"
+                                   x-model.number="current().threshold">
+                        </div>
+                        <div class="field">
+                            <label for="p-width">Width (mm)</label>
+                            <input id="p-width" data-testid="p-width" type="number" step="0.5" min="2" :max="canvasW"
+                                   :value="current().width_mm" @change="setImageWidth(current(), $event.target.value, $event.target)">
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </aside>
+    </main>
+
+    <section class="history" aria-label="Saved labels">
+        <h2 class="h2 history-head">
+            <button type="button" class="collapse" data-testid="history-toggle" id="history-toggle"
+                    :aria-expanded="history.open ? 'true' : 'false'" aria-controls="history-body"
+                    @click="toggleHistory()">
+                <span aria-hidden="true" x-text="history.open ? '▾' : '▸'"></span>
+                Saved labels <span class="count" data-testid="history-count" x-text="'(' + history.labels.length + ')'"></span>
+            </button>
+        </h2>
+
+        <div id="history-body" data-testid="history" x-show="history.open" x-cloak>
+            <div class="history-controls">
+                <div class="field grow">
+                    <label for="h-search">Search</label>
+                    <input id="h-search" data-testid="h-search" type="search" placeholder="Name or text"
+                           x-model="history.q" @input="scheduleHistory()">
+                </div>
+                <div class="field">
+                    <label for="h-sort">Sort</label>
+                    <select id="h-sort" data-testid="h-sort" x-model="history.sort" @change="loadHistory()">
+                        <option value="last_printed">Last printed</option>
+                        <option value="created">Created</option>
+                        <option value="name">Name</option>
+                    </select>
+                </div>
+                <label class="check">
+                    <input type="checkbox" data-testid="h-starred" x-model="history.starred" @change="loadHistory()">
+                    Starred only
+                </label>
+                <label class="check">
+                    <input type="checkbox" data-testid="h-all" :checked="allSelected()" :disabled="!history.labels.length"
+                           @change="toggleAll($event.target.checked)">
+                    Select all
+                </label>
+                <button type="button" class="btn danger" data-testid="h-delete"
+                        :disabled="!history.selected.length" @click="deleteSelected()">
+                    Delete selected<span x-show="history.selected.length" x-text="' (' + history.selected.length + ')'"></span>
+                </button>
+            </div>
+
+            <p class="alert" role="alert" x-show="history.error" x-cloak x-text="history.error"></p>
+            <p class="muted empty" data-testid="h-empty" x-show="!history.labels.length && !history.loading" x-cloak
+               x-text="(history.q || history.starred) ? 'No saved labels match.' : 'No saved labels yet - Save or Print a label to keep it here.'"></p>
+
+            <ul class="label-list" data-testid="label-list">
+                <template x-for="l in history.labels" :key="l.id">
+                    <li class="label-row" :class="{current: l.id === editingId}" :data-label="l.id">
+                        <input type="checkbox" class="row-check" :aria-label="'Select ' + l.name"
+                               :checked="history.selected.includes(l.id)" @change="toggleOne(l.id, $event.target.checked)">
+                        <img class="thumb" width="140" height="60" loading="lazy"
+                             :alt="'Thumbnail of ' + l.name" :src="thumbUrl(l)">
+                        <div class="meta">
+                            <strong class="name" x-text="l.name"></strong>
+                            <span class="muted" x-text="lastPrinted(l)"></span>
+                            <span class="muted" x-text="l.label_size + ' - ' + l.orientation + (l.print_count ? ' - printed ' + l.print_count + 'x' : '')"></span>
+                        </div>
+                        <div class="row-actions">
+                            <button type="button" class="btn small star" data-testid="h-star"
+                                    :aria-pressed="l.starred ? 'true' : 'false'"
+                                    :aria-label="(l.starred ? 'Unstar ' : 'Star ') + l.name"
+                                    @click="toggleStar(l)"><span aria-hidden="true" x-text="l.starred ? '★' : '☆'"></span></button>
+                            <button type="button" class="btn small" data-testid="h-open" @click="openLabel(l)">Open</button>
+                            <button type="button" class="btn small" data-testid="h-dup" @click="duplicateLabel(l)">Duplicate</button>
+                            <button type="button" class="btn small" data-testid="h-reprint" @click="reprint(l)">Re-print</button>
+                        </div>
+                    </li>
+                </template>
+            </ul>
+        </div>
+    </section>
+
+    <div class="toasts" aria-live="polite" aria-atomic="false">
+        <template x-for="t in toasts" :key="t.id">
+            <div class="toast" :class="t.kind" :role="t.kind === 'error' ? 'alert' : 'status'" data-testid="toast">
+                <span x-text="t.text"></span>
+                <button type="button" class="toast-x" aria-label="Dismiss" @click="dismiss(t.id)">&times;</button>
+            </div>
+        </template>
     </div>
-    
-    <script>
-        // Handle alignment buttons
-        document.querySelectorAll('.align-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                document.querySelectorAll('.align-btn').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                document.getElementById('align').value = this.dataset.align;
-            });
-        });
-        
-        // Handle preview button
-        document.getElementById('previewBtn').addEventListener('click', async function() {
-            const previewBtn = this;
-            const message = document.getElementById('message');
-            const previewContainer = document.getElementById('preview-container');
-            const previewImage = document.getElementById('preview-image');
-            
-            // Get form data
-            const formData = {
-                text: document.getElementById('text').value,
-                label_size: document.getElementById('label_size').value,
-                font_size: document.getElementById('font_size').value,
-                align: document.getElementById('align').value
-            };
-            
-            if (!formData.text) {
-                message.textContent = 'Please enter some text first';
-                message.classList.remove('success');
-                message.classList.add('error', 'show');
-                return;
-            }
-            
-            // Disable button and show loading
-            previewBtn.disabled = true;
-            previewBtn.textContent = '👁️ Generating...';
-            message.classList.remove('show', 'success', 'error');
-            
-            try {
-                const response = await fetch('/preview', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(formData)
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    previewImage.src = result.image;
-                    previewContainer.classList.add('show');
-                } else {
-                    message.textContent = 'Preview error: ' + result.error;
-                    message.classList.add('error', 'show');
-                    previewContainer.classList.remove('show');
-                }
-            } catch (error) {
-                message.textContent = 'Preview error: ' + error.message;
-                message.classList.add('error', 'show');
-                previewContainer.classList.remove('show');
-            } finally {
-                previewBtn.disabled = false;
-                previewBtn.textContent = '👁️ Preview Label';
-            }
-        });
-        
-        // Handle form submission
-        document.getElementById('labelForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const submitBtn = this.querySelector('button[type="submit"]');
-            const message = document.getElementById('message');
-            
-            // Get form data
-            const formData = {
-                text: document.getElementById('text').value,
-                label_size: document.getElementById('label_size').value,
-                font_size: document.getElementById('font_size').value,
-                align: document.getElementById('align').value,
-                copies: document.getElementById('copies').value
-            };
-            
-            // Disable button and show loading
-            submitBtn.disabled = true;
-            submitBtn.textContent = '🖨️ Printing...';
-            message.classList.remove('show', 'success', 'error');
-            
-            try {
-                const response = await fetch('/print', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(formData)
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    message.textContent = result.message;
-                    message.classList.add('success', 'show');
-                } else {
-                    message.textContent = 'Error: ' + result.error;
-                    message.classList.add('error', 'show');
-                }
-            } catch (error) {
-                message.textContent = 'Error: ' + error.message;
-                message.classList.add('error', 'show');
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = '🖨️ Print Label';
-            }
-        });
-    </script>
+</div>
 </body>
 </html>
