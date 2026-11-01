@@ -195,3 +195,78 @@ Not caused by this change: the v1 /print already passed int(copies) to CUPS unbo
 ### p1-f5-resolved · finding [fixed] · resolves p1-f5: Static-Analysis markdownlint is red on generated docs (phase 1)
 
 The executor tagged this out of scope, but the failing markdown (spec, journals, acceptance report) was added by this branch, so this change caused it. Fixed in 597bfd0 (.markdownlintignore for fr-generated markdown, spec lint fixes); markdownlint-cli 0.50.0 is clean.
+
+<!-- fr:journal kind=decision scope=plan id=p2-dec1 created=2026-11-01T19:41:04+00:00 phase=2 -->
+### p2-dec1 · decision · /labels response shapes and status codes (phase 2)
+
+`/labels` responses are `{success, labels}` (list) and `{success, label}` (one), with 201
+for create and duplicate, `{success, deleted: n}` for bulk delete and `{success: true}` for
+a single delete; unknown id 404, invalid doc / sort / `starred` / `ids` 400, a store write
+failure 500 (state rolled back). `starred` query filter accepts `1|true|yes`. POST /labels
+accepts `{doc}` or a bare doc, and allows a design with no content (only printing refuses
+it). `/memory` keeps its old bare-list shape (compat alias).
+
+<!-- fr:journal kind=decision scope=plan id=p2-dec2 created=2026-11-01T19:41:04+00:00 phase=2 -->
+### p2-dec2 · decision · History file safety beyond the v1 backup (phase 2)
+
+A file that cannot be parsed, has an unknown shape/version, or has v2 entries that fail
+validation (those entries are skipped) loads as what is readable and is not rewritten
+until a mutation; that first mutation first writes the original bytes to
+`saved_labels.corrupt.json`. Backups are never overwritten: an existing `.v1.json` /
+`.corrupt.json` with different bytes gets a numbered sibling (`.v1.1.json`), identical
+bytes are a no-op (so a failed first persist retries cleanly). A file that exists but
+cannot be read (OSError) loads empty and every mutation raises StoreError rather than
+overwrite it. Timestamps are ISO-8601 UTC with milliseconds (`...T18:00:01.000Z`), parsed
+(not string-compared) for sorting.
+
+<!-- fr:journal kind=decision scope=plan id=p2-dec3 created=2026-11-01T19:41:04+00:00 phase=2 -->
+### p2-dec3 · decision · v1 migration details (phase 2)
+
+v1 ids are preserved; a migrated entry is named by the R25 default (first non-empty line
+of its text); an unknown v1 `align` migrates as `center` (what v1 drew); a v1 entry that
+from_flat still rejects is skipped with a warning (the byte-identical v1 backup keeps it).
+Duplicate is inserted directly above its source and keeps the source's name.
+
+<!-- fr:journal kind=discovery scope=plan id=p2-d1 created=2026-11-01T19:41:04+00:00 phase=2 -->
+### p2-d1 · discovery · Fixture captured from bb908be, with its capture script committed (phase 2)
+
+tests/fixtures/saved_labels_v1.json was produced by `git archive bb908be
+cups_dymo_label_printer` into a scratch dir and calling that version's `_save_label` on two
+payloads (30252/60px/left/copies 2 and 11354/40px/center); the script is
+tests/fixtures/capture_saved_labels_v1.py (not collected by pytest) and was re-run to
+confirm it reproduces the file shape. v1 entries carry no `name`.
+
+<!-- fr:journal kind=discovery scope=plan id=p2-d2 created=2026-11-01T19:41:04+00:00 phase=2 -->
+### p2-d2 · discovery · Sequencing deviations inside the phase (phase 2)
+
+`_mutate` (lock + snapshot + persist + rollback) existed from T1 because T1's rollback test
+needed it; P2.T2.S3 then verified every mutation routes through it, extracted the shared
+`_named` (R25 default) helper used by create/update/migration, and added a 20-thread
+concurrency test. The file-shape assertion at tests/test_web_app.py:239-240 was rewritten
+in T3 (not T4) because T3 is the commit that switched the file to v2; :275 gained v2
+assertions in T4.
+
+<!-- fr:journal kind=discovery scope=plan id=p2-d3 created=2026-11-01T19:41:04+00:00 phase=2 -->
+### p2-d3 · discovery · Acceptance rows now backed by tests, not flipped here (phase 2)
+
+ldx-history-model (R12-R16) is now verified by tests/test_store.py (unit) and
+tests/test_routes_labels.py + tests/test_web_app.py print-flow tests (api), all run by the
+Tests workflow; its row was not edited this phase (still not-implemented, `levels: {}`) and
+should be moved to `ci` with those refs. ldx-label-name has its backend (default name,
+rename via PUT) but needs the phase-3 editor field. Suite also green on Python 3.9 with the
+CI-pinned deps.
+
+<!-- fr:journal kind=discovery scope=plan id=no-refactor-p2-t1 created=2026-11-01T19:41:04+00:00 phase=2 -->
+### no-refactor-p2-t1 · discovery · no-refactor-because P2.T1 (phase 2)
+
+_persist/_write_atomic/_keep_copy were written as the single write path from the start (one temp+os.replace helper used for the main file and both backups); nothing left to clean
+
+<!-- fr:journal kind=discovery scope=plan id=no-refactor-p2-t3 created=2026-11-01T19:41:04+00:00 phase=2 -->
+### no-refactor-p2-t3 · discovery · no-refactor-because P2.T3 (phase 2)
+
+the print flow was split into _render_for_print and _print_and_record as it was written, and T4's re-print route reuses both; nothing left to clean
+
+<!-- fr:journal kind=discovery scope=plan id=no-refactor-p2-t4 created=2026-11-01T19:41:04+00:00 phase=2 -->
+### no-refactor-p2-t4 · discovery · no-refactor-because P2.T4 (phase 2)
+
+route error mapping lives in one _label_route decorator from the start, and /memory DELETE was moved onto the shared _ids_from_request/_fail helpers in the same commit; nothing left to clean
