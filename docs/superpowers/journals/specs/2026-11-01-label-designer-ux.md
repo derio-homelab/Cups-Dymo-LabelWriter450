@@ -338,3 +338,6 @@ row_kinds:
 run_gate: tester
 run_kind: none
 ```
+
+<!-- fr:journal kind=decision scope=spec id=phase-split-2026-11-01-label-designer-ux-p2 created=2026-11-01T18:51:37+00:00 -->
+### phase-split-2026-11-01-label-designer-ux-p2 · decision · ask: history store, /labels API and print flow (R12-R16, R25) are their own ask
