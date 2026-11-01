@@ -185,8 +185,8 @@ def canvas_mm(doc: LabelDoc) -> tuple:
     return (short, long_) if doc.orientation == 'portrait' else (long_, short)
 
 
-def from_flat(payload: dict) -> LabelDoc:
-    """Convert a v1 flat payload (font size in pixels at 300 DPI) to a document."""
+def from_flat(payload: dict, dpi: int = V1_DPI) -> LabelDoc:
+    """Convert a v1 flat payload (font size in pixels at ``dpi``, default 300) to a document."""
     label_size = payload.get('label_size', DEFAULT_LABEL_SIZE)
     if label_size not in LABEL_SIZES:
         raise ValueError(f"Unknown label size: {label_size}")
@@ -195,7 +195,7 @@ def from_flat(payload: dict) -> LabelDoc:
         text=payload.get('text', ''),
         align=payload.get('align', 'center'),
         font_family=DEFAULT_FONT_FAMILY,
-        font_size_pt=px_to_pt(int(payload.get('font_size', 40))),
+        font_size_pt=px_to_pt(int(payload.get('font_size', 40)), dpi),
         bold=DEFAULT_FONT_BOLD,
     )
     block.validate()
