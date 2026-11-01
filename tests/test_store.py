@@ -409,14 +409,14 @@ def test_record_print_without_id_bumps_a_content_match(store):
     label = store.create(text_doc("Same"))
     doc = text_doc("Same")
     doc.blocks[0].id = "other-block-id"  # block ids do not count
-    doc.copies = 5                        # nor do copies
-    doc.name = "renamed"                  # nor does the name
+    doc.copies = 5                        # nor do copies (but they are adopted, p2-r5)
 
     bumped = store.record_print(doc)
     assert bumped["id"] == label["id"]
     assert bumped["print_count"] == 1
     assert bumped["last_printed_at"] is not None
     assert bumped["name"] == label["name"]
+    assert bumped["copies"] == 5
     assert len(store.list()) == 1
     assert store.record_print(text_doc("Same"))["print_count"] == 2
 
@@ -570,3 +570,51 @@ def test_a_new_file_gets_the_umask_default(tmp_path):
     path = tmp_path / "saved_labels.json"
     LabelStore(path, now=Clock()).create(text_doc("x"))
     assert (path.stat().st_mode & 0o777) == 0o666 & ~_umask()
+
+
+
+# --- content-match bump details (p2-r5) ---------------------------------------
+
+def test_content_match_adopts_an_explicit_name(store):
+    label = store.create(text_doc("Same"))
+    doc = text_doc("Same")
+    doc.name = "Jar"
+    bumped = store.record_print(doc)
+    assert bumped["id"] == label["id"] and bumped["name"] == "Jar"
+    assert bumped["updated_at"] > label["updated_at"]
+
+
+@pytest.mark.parametrize("printed_name", ["", "  ", "Same"])
+def test_content_match_keeps_the_name_when_the_doc_has_only_its_default(store, printed_name):
+    label = store.create(text_doc("Same"))
+    renamed = text_doc("Same")
+    renamed.name = "Jar"
+    store.update(label["id"], renamed)
+    doc = text_doc("Same")
+    doc.name = printed_name
+    assert store.record_print(doc)["name"] == "Jar"
+
+
+def test_duplicate_then_print_bumps_the_most_recently_printed_match(store):
+    original = store.create(text_doc("Same"))
+    store.record_print(text_doc("Same"), original["id"])
+    dup = store.duplicate(original["id"])
+    bumped = store.record_print(text_doc("Same"))
+    assert bumped["id"] == original["id"] and bumped["print_count"] == 2
+    assert store.get(dup["id"])["print_count"] == 0
+
+
+def test_unprinted_matches_bump_the_newest_updated(store):
+    original = store.create(text_doc("Same"))
+    dup = store.duplicate(original["id"])
+    assert store.record_print(text_doc("Same"))["id"] == dup["id"]
+
+
+def test_equal_matches_fall_back_to_list_order(tmp_path):
+    a = {"id": "a", "text": "Same", "label_size": "11354", "font_size": 40}
+    b = dict(a, id="b")
+    path = tmp_path / "saved_labels.json"
+    path.write_text(json.dumps([a, b]), encoding="utf-8")
+    assert LabelStore(path, now=Clock()).record_print(text_doc("Same", bold=True,
+                                                                font_size_pt=9.6,
+                                                                y_mm=None))["id"] == "a"

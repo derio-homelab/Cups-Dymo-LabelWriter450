@@ -173,6 +173,25 @@ def parse_timestamp(value: str) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
+_NEVER = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _moment(value: Optional[str]) -> datetime:
+    return parse_timestamp(value) if value else _NEVER
+
+
+def _adopt(entry: dict, doc: LabelDoc, stamp: str) -> None:
+    """A content match takes the printed doc's copies, and its name when that was
+    set explicitly (non-empty and not just the default name) (R16)."""
+    name = doc.name.strip()
+    changes = {'copies': doc.copies}
+    if name and name != default_name(doc):
+        changes['name'] = doc.name
+    if any(entry[k] != v for k, v in changes.items()):
+        entry.update(changes)
+        entry['updated_at'] = stamp
+
+
 def _matches(label: dict, needle: str) -> bool:
     if not needle:
         return True
@@ -340,10 +359,13 @@ class LabelStore:
             return copy.deepcopy(_sorted(labels, sort))
 
     def _content_match(self, key: str) -> Optional[dict]:
-        for entry in self._labels:
-            if content_key(doc_of(entry)) == key:
-                return entry
-        return None
+        """The matching entry printed most recently (then updated most recently, then
+        first in list order); ``None`` when nothing matches."""
+        matches = [e for e in self._labels if content_key(doc_of(e)) == key]
+        if not matches:
+            return None
+        return max(matches, key=lambda e: (_moment(e['last_printed_at']),
+                                           _moment(e['updated_at'])))
 
     # --- mutations ----------------------------------------------------------
 
@@ -412,6 +434,8 @@ class LabelStore:
                 if entry is None:
                     entry = self._new_entry(doc, stamp)
                     self._labels.insert(0, entry)
+                else:
+                    _adopt(entry, doc, stamp)
             entry['last_printed_at'] = stamp
             entry['print_count'] += 1
             return entry
