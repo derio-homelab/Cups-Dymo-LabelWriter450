@@ -139,9 +139,14 @@ rows:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R14
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R15
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R16
-    levels: {}
-    status: not-implemented
-    notes: ''
+    levels:
+      unit:
+      - Cups-Dymo-LabelWriter450:tests/test_store.py
+      api:
+      - Cups-Dymo-LabelWriter450:tests/test_routes_labels.py
+      - Cups-Dymo-LabelWriter450:tests/test_web_app.py
+    status: ci
+    notes: store and /labels routes covered by pytest
   - id: ldx-history-panel
     capability: label-history
     acceptance: A history panel lists saved labels with real thumbnails, search, sort,
