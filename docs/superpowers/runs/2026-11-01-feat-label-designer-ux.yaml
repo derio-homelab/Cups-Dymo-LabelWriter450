@@ -3,7 +3,7 @@ run: 2026-11-01-feat-label-designer-ux
 workflow: fr-goal@1
 branch: feat/label-designer-ux
 started: '2026-11-01T18:30:06+00:00'
-cursor: journal-check
+cursor: deliver
 steps:
   brainstorm:
     state: done
@@ -149,7 +149,11 @@ steps:
           visual: ldx-live-preview:11:4a5a15b283af,ldx-history-panel:17:474c73d02a32,ldx-ux:9:a72ff9cdb14d
           findings: p3-r1,p3-r2,p3-r3,p3-r4,p3-r5,p3-r6,p3-r7,p3-r8,p3-r9,p3-r10,p3-r11,p3-r12,p3-r13,p3-r14,p3-r15,p3-r16,p3-r17,p3-r18,p3-r19,p3-r20,p3-r21,p3-r22,p3-r23,p3-r24,p3-r25
   journal-check:
-    state: pending
+    state: done
+    at: '2026-11-01T22:18:28+00:00'
+    exit: 0
+    stdout: |
+      2 out-of-scope finding(s): p1-r10, p2-r8
   deliver:
     state: pending
 fr_version: 6.0.1rc2
