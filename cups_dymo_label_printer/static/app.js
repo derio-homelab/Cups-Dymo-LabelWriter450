@@ -38,7 +38,12 @@
     }
 
     async function api(url, options) {
-        var response = await fetch(url, options);
+        var response;
+        try {
+            response = await fetch(url, options);
+        } catch (e) {
+            throw new Error('Cannot reach the label server - check the connection and try again.');
+        }
         var body = null;
         try { body = await response.json(); } catch (e) { body = null; }
         if (!response.ok || (body && body.success === false)) {
@@ -69,6 +74,8 @@
             renderError: '',
             rendering: false,
             busy: false,
+            gen: 0,
+            modal: null,
             seq: 0,
             timer: null,
             stageW: 600,
@@ -113,6 +120,13 @@
                 window.addEventListener('resize', function () {
                     self.winH = window.innerHeight;
                     self.stageW = self.$refs.stage.clientWidth || self.stageW;
+                });
+
+                window.addEventListener('beforeunload', function (event) {
+                    if (self.dirty) {
+                        event.preventDefault();
+                        event.returnValue = '';
+                    }
                 });
 
                 this.loadFonts();
@@ -258,7 +272,7 @@
 
             addImage: function (src) {
                 var block = {
-                    type: 'image', id: this.nextId(), src: src, x_mm: 2, y_mm: 2,
+                    type: 'image', id: this.nextId(), src: src, x_mm: 2, y_mm: this.nextY() === null ? 2 : this.nextY(),
                     width_mm: round2(Math.min(20, this.canvasW / 2)), mono: 'threshold', threshold: 128
                 };
                 this.doc.blocks.push(block);
@@ -295,6 +309,12 @@
             },
 
             newLabel: function () {
+                if (this.busy) { return; }
+                this.guardUnsaved('Start a new label?', 'New label', this.doNew.bind(this));
+            },
+
+            doNew: function () {
+                this.gen += 1;
                 this.editingId = null;
                 this.selected = null;
                 this.editing = null;
@@ -331,6 +351,46 @@
             toggleTheme: function () {
                 this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
                 storeSet(KEY_THEME, this.theme);
+            },
+
+            /* ---- confirmation dialog (in-page, never window.confirm) ---- */
+
+            askConfirm: function (title, text, confirm, action) {
+                this.modal = { title: title, text: text, confirm: confirm, action: action };
+                var self = this;
+                this.$nextTick(function () {
+                    var b = self.$refs.modalCancel;
+                    if (b) { b.focus(); }
+                });
+            },
+
+            closeModal: function () {
+                this.modal = null;
+            },
+
+            acceptModal: function () {
+                var action = this.modal && this.modal.action;
+                this.modal = null;
+                if (action) { action(); }
+            },
+
+            trapTab: function (event) {
+                var box = this.$refs.modalBox;
+                var items = box ? box.querySelectorAll('button') : [];
+                if (!items.length) { return; }
+                var first = items[0], last = items[items.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            },
+
+            guardUnsaved: function (title, confirm, action) {
+                if (!this.dirty) { action(); return; }
+                this.askConfirm(title, 'This label has unsaved changes that would be lost.', confirm + ' anyway', action);
             },
 
             /* ---- inspector helpers ---- */
@@ -384,9 +444,15 @@
                 if (el) { el.value = b.width_mm === null ? '' : b.width_mm; }
             },
 
+            maxImageWidth: function (b) {
+                var i = this.info(b.id);
+                var aspect = i && i.bbox_mm[2] > 0 ? i.bbox_mm[3] / i.bbox_mm[2] : 1;
+                return Math.max(MIN_IMAGE_MM, Math.min(this.canvasW, this.canvasH / aspect));
+            },
+
             setImageWidth: function (b, value, el) {
                 var n = parseFloat(value);
-                if (isFinite(n)) { b.width_mm = round2(clamp(n, MIN_IMAGE_MM, this.canvasW)); }
+                if (isFinite(n)) { b.width_mm = round2(clamp(n, MIN_IMAGE_MM, this.maxImageWidth(b))); }
                 if (el) { el.value = b.width_mm; }
             },
 
@@ -430,10 +496,18 @@
                     this.rendered = { image: body.image, blocks: byId };
                     this.renderError = '';
                 } catch (e) {
-                    if (seq === this.seq) { this.renderError = e.message; }
+                    if (seq === this.seq) { this.renderError = this.nameBlocks(e.message); }
                 } finally {
                     if (seq === this.seq) { this.rendering = false; }
                 }
+            },
+
+            nameBlocks: function (message) {
+                var self = this;
+                return String(message).replace(/\bblock (b\d+): /, function (all, id) {
+                    var b = self.doc.blocks.find(function (x) { return x.id === id; });
+                    return (b ? self.blockLabel(b) : 'Block ' + id) + ': ';
+                });
             },
 
             /* ---- on-label overlays ---- */
@@ -496,8 +570,22 @@
                 if (b) { b.text = event.target.value; }
             },
 
-            commitEdit: function () {
+            commitEdit: function (refocus) {
+                var id = this.editing;
                 this.editing = null;
+                if (refocus && id) { this.focusOverlay(id); }
+            },
+
+            focusOverlay: function (id) {
+                var self = this;
+                this.$nextTick(function () {
+                    var el = self.$refs.frame.querySelector('[data-block="' + id + '"]');
+                    if (el) { el.focus(); }
+                });
+            },
+
+            onInplaceBlur: function (event) {
+                this.commitEdit(!event.relatedTarget);
             },
 
             cancelEdit: function () {
@@ -513,6 +601,13 @@
                     xMin: KEEP_ON_LABEL_MM - box[2], xMax: this.canvasW - KEEP_ON_LABEL_MM,
                     yMin: KEEP_ON_LABEL_MM - box[3], yMax: this.canvasH - KEEP_ON_LABEL_MM
                 };
+            },
+
+            freezeWidth: function (b) {
+                var i = this.info(b.id);
+                if (b.type === 'text' && (b.width_mm === null || b.width_mm === undefined) && i) {
+                    b.width_mm = round2(i.bbox_mm[2]);
+                }
             },
 
             startX: function (b, box) { return b.x_mm === undefined || b.x_mm === null ? box[0] : b.x_mm; },
@@ -535,9 +630,10 @@
                 if (!d) { return; }
                 var dx = event.clientX - d.sx, dy = event.clientY - d.sy;
                 if (!d.moved && Math.hypot(dx, dy) < DRAG_SLOP_PX) { return; }
-                d.moved = true;
                 var b = this.doc.blocks.find(function (x) { return x.id === d.id; });
                 if (!b) { return; }
+                if (!d.moved) { this.freezeWidth(b); d.box = this.info(b.id).bbox_mm.slice(); }
+                d.moved = true;
                 this.applyMove(b, d, d.x0 + dx / this.ppm, d.y0 + dy / this.ppm);
             },
 
@@ -566,6 +662,7 @@
             nudge: function (b, dx, dy) {
                 var i = this.info(b.id);
                 if (!i) { return; }
+                this.freezeWidth(b);
                 var box = i.bbox_mm.slice();
                 var d = { box: box, x0: this.startX(b, box), y0: this.startY(b, box) };
                 this.applyMove(b, d, d.x0 + dx, d.y0 + dy);
@@ -574,7 +671,7 @@
             startResize: function (event, b) {
                 var i = this.info(b.id);
                 if (!i) { return; }
-                this.resize = { id: b.id, sx: event.clientX, w0: b.width_mm, box: i.bbox_mm.slice() };
+                this.resize = { id: b.id, sx: event.clientX, w0: b.width_mm, box: i.bbox_mm.slice(), max: this.maxImageWidth(b) };
                 event.currentTarget.setPointerCapture(event.pointerId);
             },
 
@@ -583,7 +680,7 @@
                 if (!r) { return; }
                 var b = this.doc.blocks.find(function (x) { return x.id === r.id; });
                 if (!b) { return; }
-                var w = round2(clamp(r.w0 + (event.clientX - r.sx) / this.ppm, MIN_IMAGE_MM, this.canvasW));
+                var w = round2(clamp(r.w0 + (event.clientX - r.sx) / this.ppm, MIN_IMAGE_MM, r.max));
                 b.width_mm = w;
                 var i = this.info(b.id);
                 if (i && r.box[2] > 0) {
@@ -601,6 +698,7 @@
             /* ---- keyboard ---- */
 
             onKey: function (event) {
+                if (this.modal) { return; }
                 var mod = event.ctrlKey || event.metaKey;
                 if (mod && event.key === 'Enter') {
                     event.preventDefault();
@@ -627,22 +725,34 @@
 
             /* ---- save / print ---- */
 
-            afterSave: function (label) {
+            afterSave: function (label, sent, gen) {
+                if (gen !== this.gen) { return; }  // the user opened or started another label meanwhile
+                var named = Object.assign({}, sent);
                 if (label && label.id) {
                     this.editingId = label.id;
+                    if (!named.name) { named.name = label.name; }
                     if (!this.doc.name) { this.doc.name = label.name; }
                 }
-                this.snapshot = JSON.stringify(this.doc);
+                this.snapshot = JSON.stringify(named);
+            },
+
+            commitActiveField: function () {
+                var a = document.activeElement;
+                if (a && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) {
+                    a.dispatchEvent(new Event('change', { bubbles: true }));
+                }
             },
 
             async save() {
                 if (this.busy) { return; }
+                this.commitActiveField();
                 this.busy = true;
+                var gen = this.gen, sent = this.payload(), id = this.editingId;
                 try {
-                    var body = this.editingId
-                        ? await api('/labels/' + encodeURIComponent(this.editingId), jsonRequest('PUT', { doc: this.payload() }))
-                        : await api('/labels', jsonRequest('POST', { doc: this.payload() }));
-                    this.afterSave(body.label);
+                    var body = id
+                        ? await api('/labels/' + encodeURIComponent(id), jsonRequest('PUT', { doc: sent }))
+                        : await api('/labels', jsonRequest('POST', { doc: sent }));
+                    this.afterSave(body.label, sent, gen);
                     this.toast('success', 'Saved "' + (body.label.name || 'label') + '"');
                     this.loadHistory();
                 } catch (e) {
@@ -655,14 +765,16 @@
 
             async print() {
                 if (this.busy) { return; }
-                this.busy = true;
                 this.commitEdit();
+                this.commitActiveField();
+                this.busy = true;
+                var gen = this.gen, sent = this.payload();
                 try {
-                    var data = { doc: this.payload(), copies: this.doc.copies };
+                    var data = { doc: sent, copies: sent.copies };
                     if (this.editingId) { data.id = this.editingId; }
                     var body = await api('/print', jsonRequest('POST', data));
-                    this.afterSave(body.label);
-                    var n = this.doc.copies;
+                    this.afterSave(body.label, sent, gen);
+                    var n = sent.copies;
                     this.toast('success', 'Sent ' + n + (n === 1 ? ' copy' : ' copies') + ' to the printer');
                     if (body.warning) { this.toast('warning', body.warning); }
                     this.loadHistory();
@@ -778,6 +890,16 @@
             },
 
             openLabel: function (l) {
+                if (this.busy) { return; }
+                this.guardUnsaved('Open "' + this.nm(l) + '"?', 'Open', this.doOpen.bind(this, l));
+            },
+
+            nm: function (l) {
+                return l.name || 'Untitled';
+            },
+
+            doOpen: function (l) {
+                this.gen += 1;
                 this.editing = null;
                 this.selected = null;
                 this.doc = {
@@ -788,13 +910,13 @@
                 this.snapshot = JSON.stringify(this.doc);
                 this.rendered = { image: this.rendered.image, blocks: {} };
                 this.renderNow();
-                this.toast('info', 'Opened "' + l.name + '"');
+                this.toast('info', 'Opened "' + this.nm(l) + '"');
             },
 
             async duplicateLabel(l) {
                 try {
                     var body = await api('/labels/' + encodeURIComponent(l.id) + '/duplicate', jsonRequest('POST', {}));
-                    this.toast('success', 'Duplicated "' + body.label.name + '"');
+                    this.toast('success', 'Duplicated "' + this.nm(body.label) + '"');
                     await this.loadHistory();
                 } catch (e) {
                     this.toast('error', 'Duplicate failed: ' + e.message);
@@ -804,7 +926,7 @@
             async reprint(l) {
                 try {
                     var body = await api('/labels/' + encodeURIComponent(l.id) + '/print', jsonRequest('POST', {}));
-                    this.toast('success', 'Re-printed "' + l.name + '"');
+                    this.toast('success', 'Re-printed "' + this.nm(l) + '"');
                     if (body.warning) { this.toast('warning', body.warning); }
                     await this.loadHistory();
                 } catch (e) {
@@ -812,9 +934,16 @@
                 }
             },
 
-            async deleteSelected() {
+            deleteSelected: function () {
                 var ids = this.history.selected.slice();
                 if (!ids.length) { return; }
+                var n = ids.length;
+                this.askConfirm('Delete ' + n + (n === 1 ? ' label?' : ' labels?'),
+                    'The selected ' + (n === 1 ? 'label' : n + ' labels') + ' will be removed from the history. This cannot be undone.',
+                    'Delete ' + n, this.doDelete.bind(this, ids));
+            },
+
+            async doDelete(ids) {
                 try {
                     var body = await api('/labels', jsonRequest('DELETE', { ids: ids }));
                     if (ids.indexOf(this.editingId) >= 0) { this.editingId = null; }

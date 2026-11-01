@@ -167,7 +167,10 @@ def _block_from_json(raw: Any, index: int, text_caps: bool = True) -> Block:
     block = cls(**{k: v for k, v in raw.items() if k in names})
     if block.id is None or block.id == "":
         block.id = f"b{index + 1}"
-    block.validate(text_caps)
+    try:
+        block.validate(text_caps)
+    except ValueError as e:
+        raise ValueError(f"block {block.id}: {e}") from None
     return block
 
 
@@ -207,13 +210,16 @@ class LabelDoc:
         )
         long_edge = max(LABEL_SIZES[label_size]['width_mm'], LABEL_SIZES[label_size]['height_mm'])
         for block in doc.blocks:
-            if isinstance(block, ImageBlock) and block.width_mm > long_edge:
-                raise ValueError(f"width_mm must not exceed the label's long edge ({long_edge} mm)")
-            _check_font_cap(block, long_edge)
-            for name in ('x_mm', 'y_mm', 'width_mm'):
-                value = getattr(block, name)
-                if value is not None and abs(value) > 2 * long_edge:
-                    raise ValueError(f"{name} is out of range")
+            try:
+                if isinstance(block, ImageBlock) and block.width_mm > long_edge:
+                    raise ValueError(f"width_mm must not exceed the label's long edge ({long_edge} mm)")
+                _check_font_cap(block, long_edge)
+                for name in ('x_mm', 'y_mm', 'width_mm'):
+                    value = getattr(block, name)
+                    if value is not None and abs(value) > 2 * long_edge:
+                        raise ValueError(f"{name} is out of range")
+            except ValueError as e:
+                raise ValueError(f"block {block.id}: {e}") from None
         return doc
 
     def to_json(self) -> dict:

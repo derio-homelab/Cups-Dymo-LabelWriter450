@@ -237,8 +237,8 @@ textarea { resize: vertical; width: 100%; }
 
 .handle {
     position: absolute;
-    right: -7px;
-    bottom: -7px;
+    right: 0;
+    bottom: 0;
     width: 14px;
     height: 14px;
     background: var(--accent);
@@ -367,15 +367,18 @@ textarea { resize: vertical; width: 100%; }
 
 .toasts {
     position: fixed;
-    right: 12px;
-    bottom: 12px;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(420px, calc(100vw - 16px));
     z-index: 50;
+    pointer-events: none;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-width: min(380px, calc(100vw - 24px));
 }
 .toast {
+    pointer-events: auto;
     display: flex;
     gap: 10px;
     justify-content: space-between;
@@ -418,5 +421,28 @@ textarea { resize: vertical; width: 100%; }
     .label-row .thumb { grid-column: 2; }
     .label-row .meta { grid-column: 1 / -1; }
     .row-actions { grid-column: 1 / -1; justify-content: flex-start; }
-    .toasts { left: 8px; right: 8px; max-width: none; }
 }
+
+/* ---- confirmation dialog ---- */
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+}
+.modal {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    width: min(420px, 100%);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.modal p { margin: 4px 0 14px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }

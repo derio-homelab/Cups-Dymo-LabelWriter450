@@ -167,3 +167,14 @@ def test_non_finite_out_of_range_and_wrong_types_rejected(bad):
 def test_bad_copies_rejected(copies):
     with pytest.raises(ValueError):
         LabelDoc.from_json(_doc(copies=copies))
+
+
+def test_validation_errors_name_the_block():
+    raw = {"blocks": [
+        {"type": "text", "id": "b1", "text": "ok"},
+        {"type": "text", "id": "b2", "text": "x", "font_size_pt": 9999},
+    ]}
+    with pytest.raises(ValueError, match=r"^block b2: font_size_pt"):
+        LabelDoc.from_json(raw)
+    with pytest.raises(ValueError, match=r"^block b1: align|^block b1: Unknown alignment"):
+        LabelDoc.from_json({"blocks": [{"type": "text", "id": "b1", "align": "diagonal"}]})

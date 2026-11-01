@@ -61,3 +61,12 @@ def test_app_js_guards_every_local_storage_access():
 
 def test_legacy_web_app_directory_is_gone():
     assert not (ROOT / 'web_app').exists()
+
+
+def test_no_native_dialogs_and_text_inputs_are_capped(client):
+    js = (ROOT / 'cups_dymo_label_printer/static/app.js').read_text()
+    assert 'confirm(' not in js.replace('askConfirm(', '').replace('.confirm', '')
+    assert 'alert(' not in js
+    html = client.get('/').get_data(as_text=True)
+    assert html.count('maxlength="2000"') == 2
+    assert 'role="alertdialog"' in html

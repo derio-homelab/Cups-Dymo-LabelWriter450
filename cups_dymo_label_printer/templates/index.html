@@ -78,7 +78,7 @@
                     <span>New label</span>
                 </template>
                 <span class="unsaved" data-testid="unsaved" x-show="dirty" x-cloak>&bull; Unsaved changes</span>
-                <button type="button" class="btn small" x-show="editingId" x-cloak @click="newLabel()">New label</button>
+                <button type="button" class="btn small" data-testid="new-label" x-show="editingId" x-cloak :disabled="busy" @click="newLabel()">New label</button>
             </p>
 
             <div class="stage" x-ref="stage">
@@ -114,14 +114,14 @@
 
                     <textarea class="inplace" data-testid="inplace" x-ref="inplace"
                               x-show="editing" x-cloak
-                              aria-label="Edit block text"
+                              aria-label="Edit block text" maxlength="2000"
                               :style="inplaceStyle()"
                               :value="editing ? (doc.blocks.find(b => b.id === editing) || {}).text : ''"
                               @input="onInplaceInput($event)"
-                              @blur="commitEdit()"
+                              @blur="onInplaceBlur($event)"
                               @keydown.escape.stop.prevent="cancelEdit()"
-                              @keydown.ctrl.enter.stop.prevent="commitEdit()"
-                              @keydown.meta.enter.stop.prevent="commitEdit()"
+                              @keydown.ctrl.enter.stop.prevent="commitEdit(true)"
+                              @keydown.meta.enter.stop.prevent="commitEdit(true)"
                               @pointerdown.stop></textarea>
                 </div>
             </div>
@@ -198,7 +198,7 @@
                         <h2 class="h2">Text block</h2>
                         <div class="field">
                             <label for="p-text">Text</label>
-                            <textarea id="p-text" data-testid="p-text" rows="3" x-model="current().text"></textarea>
+                            <textarea id="p-text" data-testid="p-text" rows="3" maxlength="2000" x-model="current().text"></textarea>
                         </div>
                         <div class="field">
                             <label for="p-font">Font</label>
@@ -274,7 +274,7 @@
                         </div>
                         <div class="field">
                             <label for="p-width">Width (mm)</label>
-                            <input id="p-width" data-testid="p-width" type="number" step="0.5" min="2" :max="canvasW"
+                            <input id="p-width" data-testid="p-width" type="number" step="0.5" min="2" :max="maxImageWidth(current())"
                                    :value="current().width_mm" @change="setImageWidth(current(), $event.target.value, $event.target)">
                         </div>
                     </div>
@@ -324,28 +324,28 @@
             </div>
 
             <p class="alert" role="alert" x-show="history.error" x-cloak x-text="history.error"></p>
-            <p class="muted empty" data-testid="h-empty" x-show="!history.labels.length && !history.loading" x-cloak
+            <p class="muted empty" data-testid="h-empty" x-show="!history.labels.length && !history.loading && !history.error" x-cloak
                x-text="(history.q || history.starred) ? 'No saved labels match.' : 'No saved labels yet - Save or Print a label to keep it here.'"></p>
 
             <ul class="label-list" data-testid="label-list">
                 <template x-for="l in history.labels" :key="l.id">
                     <li class="label-row" :class="{current: l.id === editingId}" :data-label="l.id">
-                        <input type="checkbox" class="row-check" :aria-label="'Select ' + l.name"
+                        <input type="checkbox" class="row-check" :aria-label="'Select ' + nm(l)"
                                :checked="history.selected.includes(l.id)" @change="toggleOne(l.id, $event.target.checked)">
                         <img class="thumb" width="140" height="60" loading="lazy"
-                             :alt="'Thumbnail of ' + l.name" :src="thumbUrl(l)">
+                             :alt="'Thumbnail of ' + nm(l)" :src="thumbUrl(l)">
                         <div class="meta">
-                            <strong class="name" x-text="l.name"></strong>
+                            <strong class="name" x-text="nm(l)"></strong>
                             <span class="muted" x-text="lastPrinted(l)"></span>
                             <span class="muted" x-text="l.label_size + ' - ' + l.orientation + (l.print_count ? ' - printed ' + l.print_count + 'x' : '')"></span>
                         </div>
                         <div class="row-actions">
                             <button type="button" class="btn small star" data-testid="h-star"
                                     :aria-pressed="l.starred ? 'true' : 'false'"
-                                    :aria-label="(l.starred ? 'Unstar ' : 'Star ') + l.name"
+                                    :aria-label="(l.starred ? 'Unstar ' : 'Star ') + nm(l)"
                                     @click="toggleStar(l)"><span aria-hidden="true" x-text="l.starred ? '★' : '☆'"></span></button>
-                            <button type="button" class="btn small" data-testid="h-open" @click="openLabel(l)">Open</button>
-                            <button type="button" class="btn small" data-testid="h-dup" @click="duplicateLabel(l)">Duplicate</button>
+                            <button type="button" class="btn small" data-testid="h-open" :disabled="busy" @click="openLabel(l)">Open</button>
+                            <button type="button" class="btn small" data-testid="h-dup" :disabled="busy" @click="duplicateLabel(l)">Duplicate</button>
                             <button type="button" class="btn small" data-testid="h-reprint" @click="reprint(l)">Re-print</button>
                         </div>
                     </li>
@@ -353,6 +353,18 @@
             </ul>
         </div>
     </section>
+
+    <div class="modal-backdrop" x-show="modal" x-cloak data-testid="modal" @keydown.escape.window="modal && closeModal()">
+        <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-text"
+             x-ref="modalBox" @keydown.tab="trapTab($event)">
+            <h2 id="modal-title" class="h2" x-text="modal ? modal.title : ''"></h2>
+            <p id="modal-text" x-text="modal ? modal.text : ''"></p>
+            <div class="modal-actions">
+                <button type="button" class="btn" data-testid="modal-cancel" x-ref="modalCancel" @click="closeModal()">Cancel</button>
+                <button type="button" class="btn danger" data-testid="modal-confirm" @click="acceptModal()" x-text="modal ? modal.confirm : ''"></button>
+            </div>
+        </div>
+    </div>
 
     <div class="toasts" aria-live="polite" aria-atomic="false">
         <template x-for="t in toasts" :key="t.id">
