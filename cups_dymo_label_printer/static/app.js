@@ -113,6 +113,7 @@
 
                 this.snapshot = JSON.stringify(this.doc);
                 this.$watch('doc', function () { self.schedule(); });
+                this.$watch('modal', function (open) { if (open) { self.focusModal(0); } });
 
                 if (window.ResizeObserver) {
                     new ResizeObserver(function (entries) {
@@ -125,6 +126,11 @@
                     self.stageW = self.$refs.stage.clientWidth || self.stageW;
                 });
 
+                window.addEventListener('keyup', function (event) {
+                    // a space key-up would click a background button; the dialog owns the keyboard
+                    var box = self.$refs.modalBox;
+                    if (self.modal && event.key === ' ' && !(box && box.contains(event.target))) { event.preventDefault(); }
+                });
                 window.addEventListener('beforeunload', function (event) {
                     if (self.dirty) {
                         event.preventDefault();
@@ -283,7 +289,8 @@
             },
 
             fits: function (boxes, x, y, size) {
-                if (x < 0 || y < 0 || x + size > this.canvasW || y + size > this.canvasH) { return false; }
+                var edge = EDGE_MARGIN_MM;
+                if (x < MARGIN_MM || y < MARGIN_MM || x + size > this.canvasW - edge || y + size > this.canvasH - edge) { return false; }
                 return boxes.every(function (b) {
                     return x + size <= b[0] || b[0] + b[2] <= x || y + size <= b[1] || b[1] + b[3] <= y;
                 });
@@ -292,13 +299,13 @@
             // A square spot that overlaps no rendered block: right of them, then below, then anywhere.
             freeSpot: function (want) {
                 var boxes = this.blockBoxes();
-                if (!boxes.length) { return { x: 2, y: 2, size: want }; }
+                if (!boxes.length) { return { x: MARGIN_MM, y: MARGIN_MM, size: want }; }
                 var right = Math.max.apply(null, boxes.map(function (b) { return b[0] + b[2]; })) + 1;
                 var bottom = Math.max.apply(null, boxes.map(function (b) { return b[1] + b[3]; })) + 1;
                 for (var size = want; size >= 5; size -= 1) {
-                    var tries = [[right, 2], [2, bottom]];
-                    for (var gx = 0; gx <= this.canvasW; gx += 1) {
-                        for (var gy = 0; gy <= this.canvasH; gy += 1) { tries.push([gx, gy]); }
+                    var tries = [[right, MARGIN_MM], [MARGIN_MM, bottom]];
+                    for (var gx = MARGIN_MM; gx <= this.canvasW; gx += 1) {
+                        for (var gy = MARGIN_MM; gy <= this.canvasH; gy += 1) { tries.push([gx, gy]); }
                     }
                     for (var k = 0; k < tries.length; k++) {
                         if (this.fits(boxes, tries[k][0], tries[k][1], size)) {
@@ -306,11 +313,11 @@
                         }
                     }
                 }
-                return { x: round2(Math.max(0, this.canvasW - 5)), y: 2, size: 5 };
+                return { x: round2(Math.max(MARGIN_MM, this.canvasW - 5 - EDGE_MARGIN_MM)), y: MARGIN_MM, size: 5 };
             },
 
             addImage: function (src) {
-                var spot = this.freeSpot(round2(Math.min(20, this.canvasW / 2, this.canvasH - 2)));
+                var spot = this.freeSpot(round2(Math.min(20, this.canvasW / 2, this.canvasH - MARGIN_MM - EDGE_MARGIN_MM)));
                 var block = {
                     type: 'image', id: this.nextId(), src: src, x_mm: spot.x, y_mm: spot.y,
                     width_mm: spot.size, mono: 'threshold', threshold: 128
@@ -380,8 +387,10 @@
                     if (b.type === 'image') {
                         var aspect = i && i.bbox_mm[2] > 0 ? i.bbox_mm[3] / i.bbox_mm[2] : 1;
                         b.width_mm = round2(Math.max(MIN_IMAGE_MM, Math.min(b.width_mm, W - EDGE_MARGIN_MM, (H - EDGE_MARGIN_MM) / aspect)));
-                        b.x_mm = round2(clamp(b.x_mm, 0, Math.max(0, W - b.width_mm)));
-                        b.y_mm = round2(clamp(b.y_mm, 0, Math.max(0, H - b.width_mm * aspect)));
+                        var hiX = Math.max(0, W - b.width_mm - EDGE_MARGIN_MM);
+                        var hiY = Math.max(0, H - b.width_mm * aspect - EDGE_MARGIN_MM);
+                        b.x_mm = round2(clamp(b.x_mm, Math.min(MARGIN_MM, hiX), hiX));
+                        b.y_mm = round2(clamp(b.y_mm, Math.min(MARGIN_MM, hiY), hiY));
                     } else {
                         if (b.width_mm !== null && b.width_mm !== undefined) {
                             b.width_mm = round2(Math.max(1, Math.min(b.width_mm, W - 2 * MARGIN_MM)));
@@ -427,10 +436,18 @@
                 this.modal = { title: title, text: text, confirm: confirm, action: action };
                 var self = this;
                 // focus once the dialog is actually displayed
-                setTimeout(function () {
+                this.$nextTick(function () { self.focusModal(0); });
+            },
+
+            // Focus Cancel only once it is really displayed; retry per frame (max ~20) until it sticks.
+            focusModal: function (frame) {
+                var self = this;
+                requestAnimationFrame(function () {
                     var b = self.$refs.modalCancel;
-                    if (b && self.modal) { b.focus(); }
-                }, 30);
+                    if (!self.modal || !b) { return; }
+                    if (b.offsetParent !== null) { b.focus(); }
+                    if (document.activeElement !== b && frame < 20) { self.focusModal(frame + 1); }
+                });
             },
 
             leaveModal: function () {
@@ -783,6 +800,9 @@
             onKey: function (event) {
                 if (this.modal) {
                     if (event.key === 'Tab') { this.trapTab(event); }
+                    var box = this.$refs.modalBox;
+                    var outside = !(box && box.contains(event.target));
+                    if (outside && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); }
                     return;
                 }
                 var mod = event.ctrlKey || event.metaKey;

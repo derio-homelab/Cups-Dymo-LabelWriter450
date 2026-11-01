@@ -151,6 +151,7 @@ def live_preview(browser, base):
     page.click('[aria-label="Add icon leaf"]')
     settle(page)
     assert page.locator('[data-testid=handle]:visible').count() == 1
+    assert not data(page, 'd.problems().some(p => p.kind === "error")'), 'the new icon must not raise an overflow error (p3-r23)'
     cap.shot('preview-04-image-selected', ['image block selected with corner handle'])
 
     # overflowing block with its error
@@ -441,6 +442,20 @@ def ux(browser, base, scratch):
     phone.close()
 
 
+def toasts_clear(page):
+    """No toast bbox intersects any other visible button, input, select, textarea or link (p3-r24)."""
+    controls = [(c.bounding_box(), c) for c in page.locator('button, input, select, textarea, a').all()
+                if c.is_visible() and not c.evaluate("e => !!e.closest('.toast')")]
+    toasts = [t.bounding_box() for t in page.locator('[data-testid=toast]').all()]
+    assert toasts, 'no toast on screen'
+    for tb in toasts:
+        for rb, _ in controls:
+            if rb is None:
+                continue
+            assert not (tb['x'] < rb['x'] + rb['width'] and rb['x'] < tb['x'] + tb['width']
+                        and tb['y'] < rb['y'] + rb['height'] and rb['y'] < tb['y'] + tb['height']), (tb, rb)
+
+
 def review_checks(browser, base):
     """Behavioural assertions (no screenshots) for the phase-3 review findings."""
     ctx = browser.new_context(viewport=DESKTOP, color_scheme='light')
@@ -590,6 +605,7 @@ def review_checks(browser, base):
     t, i = js('d.info("b1").bbox_mm'), js('d.info("b2").bbox_mm')
     assert (t[0] + t[2] <= i[0] or i[0] + i[2] <= t[0] or t[1] + t[3] <= i[1] or i[1] + i[3] <= t[1]), (t, i)
     assert js('d.info("b2").overflow') is False and i[2] >= 5
+    assert i[0] >= 2 and i[1] >= 2, i  # p3-r23: never flush with an edge
 
     # p3-r17: the confirm dialog takes focus, traps Tab, and gives focus back
     open_app(page, base, '11354', 'landscape')
@@ -618,7 +634,8 @@ def review_checks(browser, base):
         for r in boxes:
             assert not (tb['x'] < r['x'] + r['width'] and r['x'] < tb['x'] + tb['width']
                         and tb['y'] < r['y'] + r['height'] and r['y'] < tb['y'] + tb['height']), 'toast covers a control'
-    assert page.evaluate("() => getComputedStyle(document.querySelector('.toasts')).pointerEvents") == 'none'
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.toasts')).position") == 'static'
+    toasts_clear(page)
 
     # p3-r20: landscape -> portrait after a nudge leaves nothing off the label
     open_app(page, base, '11354', 'landscape')
@@ -655,6 +672,40 @@ def review_checks(browser, base):
         return d.gen > g && d.editingId === null;
     }""", other['id'])
     assert bumped
+
+
+    # p3-r23: a 25 mm image at x=60 on 30252 landscape, switched to 11354, stays on the label
+    open_app(page, base, '30252', 'landscape')
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon wifi"]')
+    settle(page)
+    page.fill('[data-testid=p-width]', '25')
+    page.press('[data-testid=p-width]', 'Tab')
+    page.evaluate("() => { const d = Alpine.$data(document.querySelector('.app')); d.doc.blocks[0].x_mm = 60; }")
+    settle(page)
+    page.select_option('[data-testid=stock]', '11354')
+    settle(page)
+    page.click('[data-testid=orientation]')
+    settle(page)
+    assert js('d.canvasW') == 32 and js('d.info("b1").overflow') is False, js('d.info("b1")')
+    assert js('d.doc.blocks[0].x_mm') >= 2 and js('d.doc.blocks[0].y_mm') >= 2
+    page.click('[data-testid=orientation]')
+
+    # p3-r24: toasts live in a reserved strip; nothing moves and nothing is covered, on desktop and at 360 px
+    for viewport in (DESKTOP, PHONE):
+        c2 = browser.new_context(viewport=viewport, color_scheme='light')
+        p2 = new_page(c2)
+        p2.goto(base + '/')
+        p2.wait_for_selector('.label-row')
+        doc_top = lambda: p2.evaluate("() => document.querySelector('.workspace').getBoundingClientRect().top + window.scrollY")
+        top = doc_top()
+        for _ in range(3):
+            p2.locator('.label-row').first.locator('[data-testid=h-reprint]').click()
+            p2.wait_for_timeout(120)
+        assert p2.locator('[data-testid=toast]').count() == 2
+        assert doc_top() == top, 'a toast moved the page'
+        toasts_clear(p2)
+        c2.close()
 
     # p3-r10: a failing history shows a friendly message and no empty-state text
     page.route('**/labels?*', lambda r: r.abort())
