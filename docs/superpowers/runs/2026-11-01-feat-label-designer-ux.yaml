@@ -12,7 +12,17 @@ steps:
     emitted:
       spec: docs/superpowers/specs/2026-11-01-label-designer-ux-design.md
   spec-review:
-    state: pending
+    state: running
+    at: '2026-11-01T18:43:22+00:00'
+    units:
+      step/spec-review:
+        attempts:
+        - dispatched: '2026-11-01T18:43:22+00:00'
+          agent_type: super-fr:fr-spec-reviewer
+          harness: claude-code
+          tier: hard
+          bound: opus
+          session: 11e6106b-2cce-4dbf-9b51-79b7aae10877
   plan:
     state: pending
   plan-review:
