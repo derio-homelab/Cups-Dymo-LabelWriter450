@@ -16,7 +16,13 @@ sys.path.insert(0, str(ROOT))
 
 memory = Path(os.environ.setdefault('LABEL_MEMORY_FILE', str(ROOT / 'scripts' / 'tmp' / 'dev' / 'saved_labels.json')))
 os.environ.setdefault('LABEL_IMAGE_DIR', str(memory.parent / 'images'))
-os.environ.setdefault('LABEL_FONT_DIRS', str(ROOT / 'tests' / 'fixtures' / 'fonts'))
+font_dirs = [str(ROOT / 'tests' / 'fixtures' / 'fonts')]
+try:  # matplotlib bundles the real DejaVu families, which a dev machine often lacks
+    import matplotlib
+    font_dirs.append(str(Path(matplotlib.get_data_path()) / 'fonts' / 'ttf'))
+except ImportError:
+    pass
+os.environ.setdefault('LABEL_FONT_DIRS', os.pathsep.join(font_dirs))
 memory.parent.mkdir(parents=True, exist_ok=True)
 FAIL_FLAG = Path(os.environ.get('FAKE_CUPS_DIR', memory.parent)) / 'fail'
 

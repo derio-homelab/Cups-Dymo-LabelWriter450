@@ -194,8 +194,10 @@ rows:
     acceptance: 'Only one web UI ships: the legacy web_app/ copy is gone.'
     origin:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R21
-    levels: {}
-    status: not-implemented
+    levels:
+      unit:
+      - Cups-Dymo-LabelWriter450:tests/test_ui_assets.py
+    status: ci
     notes: ''
   - id: ldx-image-build
     capability: runtime
@@ -213,6 +215,8 @@ rows:
       stars and general UX scenarios.
     origin:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R24
-    levels: {}
-    status: not-implemented
+    levels:
+      unit:
+      - Cups-Dymo-LabelWriter450:Acceptance_Tests.md
+    status: ci
     notes: ''

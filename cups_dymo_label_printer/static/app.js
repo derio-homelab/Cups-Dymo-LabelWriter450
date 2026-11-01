@@ -376,6 +376,14 @@
                 if (el && b) { el.value = b.font_size_pt; }
             },
 
+            setBoxWidth: function (value, el) {
+                var b = this.current();
+                if (!b) { return; }
+                var n = parseFloat(value);
+                b.width_mm = isFinite(n) ? round2(clamp(n, 1, this.canvasW)) : null;
+                if (el) { el.value = b.width_mm === null ? '' : b.width_mm; }
+            },
+
             setImageWidth: function (b, value, el) {
                 var n = parseFloat(value);
                 if (isFinite(n)) { b.width_mm = round2(clamp(n, MIN_IMAGE_MM, this.canvasW)); }

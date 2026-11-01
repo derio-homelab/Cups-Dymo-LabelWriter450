@@ -25,9 +25,9 @@
         <div class="field">
             <label for="label-stock">Label stock</label>
             <select id="label-stock" data-testid="stock" x-model="doc.label_size" @change="onStockChange()">
-                <template x-for="(s, key) in stocks" :key="key">
-                    <option :value="key" x-text="key + ' - ' + s.name"></option>
-                </template>
+                {% for key, size in label_sizes.items() %}
+                <option value="{{ key }}">{{ key }} - {{ size.name }}</option>
+                {% endfor %}
             </select>
         </div>
 
@@ -183,9 +183,10 @@
                         <h2 class="h2">Defaults</h2>
                         <div class="field">
                             <label for="default-font">Font for new text</label>
-                            <select id="default-font" data-testid="default-font" x-model="defaultFont" @change="rememberFont()">
+                            <select id="default-font" data-testid="default-font"
+                                    @change="defaultFont = $event.target.value; rememberFont()">
                                 <template x-for="f in fonts" :key="f.family">
-                                    <option :value="f.family" x-text="f.family"></option>
+                                    <option :value="f.family" :selected="f.family === defaultFont" x-text="f.family"></option>
                                 </template>
                             </select>
                         </div>
@@ -201,9 +202,10 @@
                         </div>
                         <div class="field">
                             <label for="p-font">Font</label>
-                            <select id="p-font" data-testid="p-font" x-model="current().font_family" @change="onFontChange()">
+                            <select id="p-font" data-testid="p-font"
+                                    @change="current().font_family = $event.target.value; onFontChange()">
                                 <template x-for="f in fontChoices(current())" :key="f.family">
-                                    <option :value="f.family" x-text="f.family"></option>
+                                    <option :value="f.family" :selected="f.family === current().font_family" x-text="f.family"></option>
                                 </template>
                             </select>
                             <span class="note" x-show="substituted(current())" x-cloak>Font not installed - a substitute is shown.</span>
@@ -240,6 +242,12 @@
                                             @click="current().align = a" x-text="a.charAt(0).toUpperCase() + a.slice(1)"></button>
                                 </template>
                             </div>
+                        </div>
+                        <div class="field">
+                            <label for="p-boxwidth">Box width (mm)</label>
+                            <input id="p-boxwidth" data-testid="p-boxwidth" type="number" step="0.5" min="1" :max="canvasW"
+                                   placeholder="auto (label width)" :value="current().width_mm === null ? '' : current().width_mm"
+                                   @change="setBoxWidth($event.target.value, $event.target)">
                         </div>
                         <label class="check">
                             <input type="checkbox" data-testid="p-shrink" x-model="current().shrink_to_fit">

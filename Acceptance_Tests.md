@@ -120,64 +120,126 @@ These scenarios describe the expected, user-visible behaviors of the LabelWriter
 - Then the response status is 200
 - And the body contains either the printer info dictionary from CUPS or an `error` field
 
-## Memory (Saved Labels)
+## Fonts
 
-### Should store printed labels as previews without duplication
+### Should list the curated font families found on the host
 
-- Given a label payload `{ text, label_size, font_size, align, copies }`
-- When `/print` is called successfully
-- Then the label is added to the saved stack as a preview
-- And if an identical label already exists, the old entry is removed and the new one is placed at the top (no duplicates)
+- Given font files in `LABEL_FONT_DIRS`
+- When `/fonts` is requested
+- Then each catalog family with at least one file is listed with its available styles
+- And a family with no file is omitted
 
-### Should allow expand/collapse of the saved stack
+### Should mix fonts, sizes and styles on one label
 
-- Given the saved labels section
-- When the user collapses or expands it
-- Then the stack hides or shows without losing its contents
+- Given a label with several text blocks
+- When each block sets its own family, size in points, bold, italic, underline and alignment
+- Then the render shows every block in its own style
+- And a style the family lacks renders as the nearest available one, and the editor disables that toggle
 
-### Should allow selecting a saved label to re-fill the form
+## Images
 
-- Given a saved label in the stack
-- When the user selects that saved label
-- Then the main input fields are populated with that label’s text, label_size, font_size, align, and copies
+### Should add uploaded images and built-in icons
 
-### Should allow deleting a saved label
+- Given a PNG, JPEG or SVG up to `LABEL_MAX_UPLOAD_MB`, or an icon from `/icons`
+- When the user uploads it or picks the icon
+- Then an image block is added, rendered pure black and white with the chosen threshold or dither mode
+- And a larger file is refused with 413 and any other type with 400
 
-- Given a saved label in the stack
-- When the user deletes that saved label
-- Then it is removed from the stack
-- And it is no longer available for selection or duplication checks
+## Live preview
 
-### Should allow selecting multiple labels and deleting them at once
+### Should show the render inside a frame of the stock's real shape
 
-- Given each saved label has a checkbox
-- And a Delete action is available
-- When the user checks multiple labels and presses Delete
-- Then all selected labels are removed from the stack
-- And the remaining labels stay intact in order
+- Given a label stock and orientation
+- When the user types or changes any setting
+- Then after about 250 ms the server render appears inside a rounded frame of that aspect ratio
+- And a block that overflows the label gets a red outline and a message
 
-### Should allow select-all from the stack header
+### Should edit, move and scale blocks on the label
 
-- Given a select-all checkbox at the stack level
-- When the user toggles select-all on
-- Then all saved labels become selected
-- And pressing Delete removes all labels
-- And toggling select-all off clears all selections without deleting
+- Given blocks on the preview
+- When the user clicks a text block, drags a block, drags an image's corner handle or presses an arrow key
+- Then the text is edited in place (Esc cancels), the block moves with at least 1 mm kept on the label,
+  the image scales between 2 mm and the label width, and each arrow press nudges 0.5 mm
+
+## Orientation
+
+### Should swap the canvas and print the way it is previewed
+
+- Given a label in portrait or landscape
+- When the user toggles the orientation
+- Then the canvas swaps its width and height, and the orientation is saved with the label
+- And the printed image is rotated to the stock's media so it matches the preview
+
+## History
+
+### Should store printed labels without duplication
+
+- Given a design printed from the editor
+- When `/print` succeeds
+- Then the design is saved, or the existing entry with identical content is bumped (`last_printed_at`, `print_count`)
+- And re-printing from history bumps that entry instead of adding one
+
+### Should list saved labels with thumbnails, search and sort
+
+- Given saved labels
+- When the history panel is open
+- Then each label shows a renderer-made thumbnail, name and last-printed time
+- And search matches names and text, and sort is by last printed, created or name
+- And the panel can be collapsed and expanded without losing its contents
+
+### Should allow selecting a saved label to re-fill the editor
+
+- Given a saved label in the panel
+- When the user presses Open
+- Then the editor shows its blocks, stock, orientation, copies and name, marked "Editing: name"
+
+### Should allow duplicate, re-print and delete
+
+- Given saved labels with checkboxes and a select-all
+- When the user presses Duplicate, Re-print, or Delete selected
+- Then Duplicate adds an unstarred copy, Re-print prints without opening and bumps the entry
+- And Delete removes exactly the selected labels, and select-all selects every label
+
+## Stars
+
+### Should keep starred labels first
+
+- Given a star toggle on each label and a Starred only filter
+- When the user stars a label
+- Then it moves above the unstarred labels under every sort, and the state persists
+- And Starred only lists just the starred labels
+
+## General UX
+
+### Should give keyboard shortcuts and feedback
+
+- Given the designer page
+- When the user presses Ctrl/Cmd+Enter or Ctrl/Cmd+P
+- Then the label is printed, or re-rendered without the browser print dialog
+- And toasts report print success, failure and history warnings, and a badge shows the printer status
+
+### Should work on a phone, in dark mode, and remember settings
+
+- Given a 360 px wide screen or a dark system scheme
+- When the page loads
+- Then it has no horizontal scroll and follows the scheme, with a manual theme toggle
+- And the copies stepper is limited to 1-99
+- And the last stock, font and orientation are restored after a reload
 
 ## Persistence (Saved Labels on Disk)
 
 ### Should persist saved labels to disk after print/delete
 
-- Given a successful `/print` call that adds to the stack
-- When the stack is written to disk as JSON
-- Then the file contains the saved labels (including ids and fields)
-- And when labels are deleted via `/memory` DELETE, the file is updated accordingly
+- Given a successful `/print` call that adds to the history
+- When the history is written to disk as JSON
+- Then the file contains `{"version": 2, "labels": [...]}` with ids and blocks
+- And when labels are deleted via `/labels` DELETE, the file is updated accordingly
 
 ### Should load saved labels from disk on startup
 
 - Given a JSON persistence file with saved labels
 - When the app starts (or the module is reloaded)
-- Then `/memory` returns the entries from disk in stack order (most recent first)
+- Then `/labels` returns the entries from disk, starred first, then in the active sort (default last printed)
 
 ## Container / Runtime
 

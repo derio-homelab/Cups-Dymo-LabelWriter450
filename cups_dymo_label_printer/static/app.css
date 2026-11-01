@@ -188,7 +188,7 @@ textarea { resize: vertical; width: 100%; }
     padding: 16px 8px;
     display: flex;
     justify-content: center;
-    overflow-x: auto;
+    overflow: hidden;
 }
 
 .frame {
