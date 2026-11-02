@@ -380,3 +380,10 @@ Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 30252 portrait, tex
 Step: 11354 Multipurpose, landscape and portrait → print each; both match their previews.
 
 Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 11354 landscape, text[22pt, 14pt], printed x5 | label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 11354 portrait, text[22pt, 14pt], printed x6; operator: in landscape, bottom right was cut off; paper matched the preview (operator, 2026-11-02)
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-5 created=2026-11-02T06:45:38+00:00 -->
+### test-plan-step-5 · discovery · Test Plan step 5: ran
+
+Step: Add an uploaded photo with `dither` and an icon with `threshold` → print; both are legible and match the preview.
+
+Evidence: auto-check did not confirm: no printed label with an upload:* image in dither AND an icon:* in threshold since 2026-11-02T06:40:30.000Z; operator: Threshold 128 looks better than dither; paper matched the preview (operator, 2026-11-02)
