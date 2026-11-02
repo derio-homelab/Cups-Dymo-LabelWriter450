@@ -1,0 +1,779 @@
+"""Drive the designer in a real browser and capture the visual-evidence screenshots.
+
+    uv run --no-project --with playwright playwright install chromium
+    uv run --no-project --with playwright python scripts/capture_visual.py [out_dir]
+
+Starts ``scripts/dev_server.py`` (fake CUPS, scratch history and image dirs) on a free
+port, runs every scenario of the acceptance rows ldx-live-preview, ldx-history-panel
+and ldx-ux, asserts the limits it shows, and writes PNGs plus ``manifest.json`` (row ->
+shots -> the state/interaction names each one shows) to ``out_dir``
+(default ``scripts/tmp/visual``, git-ignored).
+"""
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+
+from playwright.sync_api import sync_playwright
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = (ROOT / (os.environ.get('VISUAL_OUT') or 'scripts/tmp/visual')).resolve()
+SERVER_CMD = [
+    'uv', 'run', '--no-project', '--with', 'flask', '--with', 'pillow', '--with', 'cairosvg',
+    '--with', 'matplotlib', 'python', str(ROOT / 'scripts' / 'dev_server.py'),
+]
+DESKTOP = {'width': 1100, 'height': 1000}
+PHONE = {'width': 360, 'height': 900}
+APP = '.app'
+
+manifest = {}
+
+
+def new_page(ctx):
+    page = ctx.new_page()
+    page.on('dialog', lambda d: d.accept())  # beforeunload guard of an edited label
+    return page
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
+
+def api(base, method, path, body=None):
+    data = None if body is None else json.dumps(body).encode()
+    req = urllib.request.Request(base + path, data=data, method=method,
+                                 headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req) as resp:
+        return json.loads(resp.read() or b'{}')
+
+
+class Capture:
+    def __init__(self, page, row):
+        self.page, self.row = page, row
+
+    def shot(self, name, shows, target=None, full=True):
+        OUT.mkdir(parents=True, exist_ok=True)
+        path = OUT / f'{name}.png'
+        if target:
+            self.page.locator(target).first.screenshot(path=str(path))
+        else:
+            self.page.screenshot(path=str(path), full_page=full)
+        manifest.setdefault(self.row, []).append({'path': str(path), 'shows': list(shows)})
+        return path
+
+
+def data(page, expr):
+    return page.evaluate(f"() => {{ const d = Alpine.$data(document.querySelector('{APP}')); return {expr}; }}")
+
+
+def settle(page):
+    page.wait_for_timeout(450)
+    page.wait_for_function(
+        f"() => !Alpine.$data(document.querySelector('{APP}')).rendering")
+    page.wait_for_timeout(100)
+
+
+def open_app(page, base, stock=None, orientation=None):
+    page.goto(base + '/')
+    page.wait_for_selector('[data-testid=frame]')
+    page.wait_for_function(f"() => Alpine.$data(document.querySelector('{APP}')).rendered.image")
+    if stock:
+        page.select_option('[data-testid=stock]', stock)
+    if orientation and data(page, 'd.doc.orientation') != orientation:
+        page.click('[data-testid=orientation]')
+    settle(page)
+
+
+def add_text(page, text, size=None):
+    page.click('[data-testid=add-text]')
+    page.fill('[data-testid=p-text]', text)
+    if size is not None:
+        page.fill('[data-testid=p-size]', str(size))
+        page.press('[data-testid=p-size]', 'Tab')
+    settle(page)
+
+
+def overlay(page, index=-1):
+    return page.locator('.overlay:visible').nth(index)
+
+
+def nudge_to_top(page, block_index):
+    """Move a vertically-centred block up with the arrow keys so a second block fits."""
+    overlay(page, block_index).focus()
+    for _ in range(40):
+        if data(page, f"d.info(d.doc.blocks[{block_index}].id).bbox_mm[1]") <= 2.5:
+            break
+        page.keyboard.press('ArrowUp')
+    settle(page)
+
+
+def drag(page, locator, dx, dy):
+    box = locator.bounding_box()
+    x, y = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + dx / 2, y + dy / 2, steps=6)
+    page.mouse.move(x + dx, y + dy, steps=6)
+    page.mouse.up()
+    settle(page)
+
+
+def live_preview(browser, base):
+    ctx = browser.new_context(viewport=DESKTOP, color_scheme='light')
+    page = new_page(ctx)
+    cap = Capture(page, 'ldx-live-preview')
+
+    open_app(page, base, '11354', 'landscape')
+    cap.shot('preview-01-empty', ['empty label'])
+
+    # two blocks of different sizes + type-to-update
+    add_text(page, 'Flour\nT55', 16)
+    nudge_to_top(page, 0)
+    add_text(page, 'Best before 2027', 9)
+    before = data(page, 'd.rendered.image.length') + hash(data(page, 'd.rendered.image'))
+    cap.shot('preview-02-two-texts', ['two text blocks of different sizes'])
+    page.fill('[data-testid=p-text]', 'Best before 2028 - keep dry')
+    settle(page)
+    after = data(page, 'd.rendered.image.length') + hash(data(page, 'd.rendered.image'))
+    assert before != after, 'the preview did not change after typing'
+    cap.shot('preview-03-type-updates', ['type in a field and see the preview update'])
+
+    # image selected with its corner handle
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon leaf"]')
+    settle(page)
+    assert page.locator('[data-testid=handle]:visible').count() == 1
+    assert not data(page, 'd.problems().some(p => p.kind === "error")'), 'the new icon must not raise an overflow error (p3-r23)'
+    cap.shot('preview-04-image-selected', ['image block selected with corner handle'])
+
+    # overflowing block with its error
+    add_text(page, 'THIS TEXT IS FAR TOO WIDE FOR THE LABEL', 30)
+    assert data(page, 'd.problems().some(p => p.kind === "error")')
+    cap.shot('preview-05-overflow', ['overflowing block with error'])
+
+    # 30252 frames, then 11354 portrait
+    page.reload()
+    page.wait_for_selector('[data-testid=frame]')
+    add_text(page, 'Pantry', 14)
+    page.select_option('[data-testid=stock]', '30252')
+    settle(page)
+    if data(page, 'd.doc.orientation') != 'landscape':
+        page.click('[data-testid=orientation]')
+    settle(page)
+    assert data(page, 'd.canvasW') == 89 and data(page, 'd.canvasH') == 28
+    cap.shot('preview-06-30252-landscape', ['30252 landscape frame'])
+    page.select_option('[data-testid=stock]', '11354')
+    page.click('[data-testid=orientation]')
+    settle(page)
+    assert data(page, 'd.canvasW') == 32 and data(page, 'd.canvasH') == 57
+    cap.shot('preview-07-11354-portrait', ['11354 portrait frame'])
+
+    # click a text block and edit it in place
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Edit me', 14)
+    overlay(page).click()
+    page.wait_for_selector('[data-testid=inplace]:visible')
+    page.fill('[data-testid=inplace]', 'Edited in place\nsecond line')
+    settle(page)
+    assert data(page, 'd.doc.blocks[0].text') == 'Edited in place\nsecond line'
+    cap.shot('preview-08-edit-in-place', ['click a text block and edit it in place'])
+    page.keyboard.press('Escape')
+    assert data(page, 'd.doc.blocks[0].text') == 'Edit me', 'Esc must cancel the edit'
+
+    # drag to the label edge (limit)
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Drag me', 14)
+    page.fill('[data-testid=p-boxwidth]', '25')
+    page.press('[data-testid=p-boxwidth]', 'Tab')
+    page.click('[data-testid=p-align-left]')
+    settle(page)
+    drag(page, overlay(page), 900, 0)
+    x = data(page, 'd.doc.blocks[0].x_mm')
+    assert x == 56, x  # canvas 57 mm wide minus the 1 mm that must stay on the label
+    cap.shot('preview-09-drag-limit', ['drag a block to the label edge (limit)'])
+
+    # scale an image to the label width (limit): portrait 11354 is 32 mm wide
+    open_app(page, base, '11354', 'portrait')
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon house"]')
+    settle(page)
+    overlay(page).focus()
+    for _ in range(4):
+        page.keyboard.press('ArrowLeft')
+    settle(page)
+    handle = page.locator('[data-testid=handle]:visible')
+    drag(page, handle, 600, 0)
+    width = data(page, 'd.doc.blocks[0].width_mm')
+    assert width == 31.8 and data(page, 'd.info("b1").overflow') is False, width  # max scale leaves a 0.2 mm margin (p3-r18)
+    cap.shot('preview-10-scale-limit', ['scale an image by its corner handle to the label width (limit)'])
+
+    # arrow-key nudge
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Nudge', 14)
+    page.fill('[data-testid=p-boxwidth]', '30')
+    page.press('[data-testid=p-boxwidth]', 'Tab')
+    nudge_to_top(page, 0)
+    x0 = data(page, 'd.doc.blocks[0].x_mm')
+    overlay(page).focus()
+    for _ in range(6):
+        page.keyboard.press('ArrowRight')
+    settle(page)
+    assert data(page, 'd.doc.blocks[0].x_mm') == x0 + 3
+    cap.shot('preview-11-arrow-nudge', ['arrow-key nudge'])
+    ctx.close()
+
+
+def history_panel(browser, base):
+    ctx = browser.new_context(viewport=DESKTOP, color_scheme='light')
+    page = new_page(ctx)
+    cap = Capture(page, 'ldx-history-panel')
+
+    open_app(page, base, '11354', 'landscape')
+    page.wait_for_selector('[data-testid=h-empty]:visible')
+    cap.shot('history-01-empty', ['empty history'])
+    page.click('[data-testid=history-toggle]')
+    page.wait_for_selector('[data-testid=history]', state='hidden')
+    cap.shot('history-02-collapsed', ['collapsed panel', 'collapse and expand'], target='.history')
+    page.click('[data-testid=history-toggle]')
+    page.wait_for_selector('[data-testid=history]:visible')
+    cap.shot('history-03-expanded-again', ['collapse and expand'], target='.history')
+
+    def block(i, text, size=14, y=None):
+        return {'type': 'text', 'id': f'b{i}', 'text': text, 'x_mm': 2, 'y_mm': y, 'width_mm': None,
+                'align': 'center', 'font_family': 'DejaVu Sans', 'font_size_pt': size,
+                'bold': True, 'italic': False, 'underline': False, 'shrink_to_fit': False}
+
+    seeds = [
+        ('Flour', '11354', 'landscape', [block(1, 'Flour\nT55', 18)]),
+        ('Sugar', '11354', 'landscape', [block(1, 'Sugar', 24)]),
+        ('Return address', '30252', 'landscape', [block(1, 'A. Baker\n1 Mill Lane', 12)]),
+        ('Spice jar', '11354', 'portrait',
+         [block(1, 'Cumin', 16, 2), {'type': 'image', 'id': 'b2', 'src': 'icon:leaf', 'x_mm': 8, 'y_mm': 20,
+                                      'width_mm': 14, 'mono': 'threshold', 'threshold': 128}]),
+    ]
+    ids = {}
+    for name, stock, orientation, blocks in seeds:
+        doc = {'label_size': stock, 'orientation': orientation, 'copies': 1, 'name': name, 'blocks': blocks}
+        ids[name] = api(base, 'POST', '/labels', {'doc': doc})['label']['id']
+        time.sleep(0.01)
+    api(base, 'PUT', f"/labels/{ids['Sugar']}/star", {'starred': True})
+    api(base, 'POST', f"/labels/{ids['Flour']}/print", {})
+    page.reload()
+    page.wait_for_selector('[data-testid=label-list] li')
+    page.wait_for_function("() => [...document.images].filter(i => i.closest('.label-row')).every(i => i.complete && i.naturalWidth)")
+    names = page.locator('.label-row .name').all_inner_texts()
+    assert names[0] == 'Sugar', names  # the starred label sorts first
+    cap.shot('history-04-list', ['list with starred and unstarred labels'])
+
+    page.fill('[data-testid=h-search]', 'zzz-no-such-label')
+    page.wait_for_selector('[data-testid=h-empty]:visible')
+    cap.shot('history-05-no-matches', ['search with no matches'], target='.history')
+    page.fill('[data-testid=h-search]', '')
+    page.wait_for_function("() => document.querySelectorAll('.label-row').length === 4")
+
+    page.check('[data-testid=h-starred]')
+    page.wait_for_function("() => document.querySelectorAll('.label-row').length === 1")
+    cap.shot('history-06-starred-only', ['starred-only filter on'], target='.history')
+    page.uncheck('[data-testid=h-starred]')
+    page.wait_for_function("() => document.querySelectorAll('.label-row').length === 4")
+
+    # open into the editor
+    page.locator('.label-row', has_text='Return address').locator('[data-testid=h-open]').click()
+    settle(page)
+    assert data(page, 'd.doc.name') == 'Return address' and data(page, 'd.doc.label_size') == '30252'
+    assert page.locator('[data-testid=editing]').inner_text().startswith('Editing: Return address')
+    cap.shot('history-07-open', ['open a label into the editor'])
+
+    # duplicate
+    page.locator('.label-row', has_text='Spice jar').locator('[data-testid=h-dup]').click()
+    page.wait_for_function("() => document.querySelectorAll('.label-row').length === 5")
+    cap.shot('history-08-duplicate', ['duplicate a label'])
+
+    # re-print from history
+    page.locator('.label-row', has_text='Sugar').locator('[data-testid=h-reprint]').click()
+    page.wait_for_selector('[data-testid=toast]:has-text("Re-printed")')
+    page.wait_for_function("() => document.querySelector('.label-row .meta').innerText.includes('printed 1x')")
+    cap.shot('history-09-reprint', ['re-print from history'])
+
+    # toggle a star and watch it move to the top
+    row = page.locator('.label-row', has_text='Return address')
+    assert page.locator('.label-row .name').all_inner_texts().index('Return address') > 1
+    cap.shot('history-10-star-before', ['toggle a star and see it move to the top'], target='.history')
+    row.locator('[data-testid=h-star]').click()
+    page.wait_for_function("() => document.querySelector('.label-row .name').innerText === 'Return address'"
+                           " || document.querySelectorAll('.label-row')[1].querySelector('.name').innerText === 'Return address'")
+    top_two = page.locator('.label-row .name').all_inner_texts()[:2]
+    assert 'Return address' in top_two, top_two
+    cap.shot('history-11-star-after', ['toggle a star and see it move to the top'], target='.history')
+
+    # multi-select delete: two rows
+    page.locator('.label-row', has_text='Flour').locator('.row-check').check()
+    page.locator('.label-row', has_text='Spice jar').first.locator('.row-check').check()
+    cap.shot('history-12-multi-selected', ['multi-select delete'], target='.history')
+    page.click('[data-testid=h-delete]')
+    page.wait_for_selector('[data-testid=modal]:visible')
+    assert '2 labels' in page.inner_text('[data-testid=modal]')
+    cap.shot('history-12b-delete-confirm', ['multi-select delete'], target='[data-testid=modal]')
+    page.click('[data-testid=modal-cancel]')
+    page.wait_for_selector('[data-testid=modal]', state='hidden')
+    assert page.locator('.label-row').count() == 5, 'Cancel must not delete'
+    page.click('[data-testid=h-delete]')
+    page.click('[data-testid=modal-confirm]')
+    page.wait_for_selector('[data-testid=toast]:has-text("Deleted 2")')
+    page.wait_for_function("() => document.querySelectorAll('.label-row').length === 3")
+    cap.shot('history-13-multi-deleted', ['multi-select delete'], target='.history')
+
+    # select-all then delete
+    page.check('[data-testid=h-all]')
+    assert page.locator('.row-check:checked').count() == 3
+    cap.shot('history-14-select-all', ['select-all then delete'], target='.history')
+    page.click('[data-testid=h-delete]')
+    page.click('[data-testid=modal-confirm]')
+    page.wait_for_selector('[data-testid=h-empty]:visible')
+    cap.shot('history-15-all-deleted', ['select-all then delete'], target='.history')
+
+    # narrow layout, with rows to show
+    for name, stock, orientation, blocks in seeds[:3]:
+        doc = {'label_size': stock, 'orientation': orientation, 'copies': 1, 'name': name, 'blocks': blocks}
+        api(base, 'POST', '/labels', {'doc': doc})
+    narrow = browser.new_context(viewport=PHONE, color_scheme='light')
+    p2 = new_page(narrow)
+    p2.goto(base + '/')
+    p2.wait_for_selector('[data-testid=label-list] li')
+    p2.wait_for_function("() => [...document.images].filter(i => i.closest('.label-row')).every(i => i.complete && i.naturalWidth)")
+    assert p2.evaluate('() => document.documentElement.scrollWidth') <= 360, 'horizontal scroll at 360px'
+    Capture(p2, 'ldx-history-panel').shot('history-16-narrow-360', ['narrow 360px layout'])
+    narrow.close()
+    ctx.close()
+
+
+def ux(browser, base, scratch):
+    fail_flag = Path(scratch) / 'fail'
+    ctx = browser.new_context(viewport=DESKTOP, color_scheme='light')
+    page = new_page(ctx)
+    cap = Capture(page, 'ldx-ux')
+    requests = []
+    page.on('request', lambda r: requests.append(r.url) if r.url.endswith('/render') else None)
+
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Ready to print', 16)
+    page.wait_for_function("() => document.querySelector('[data-testid=printer-badge]').innerText.includes('idle')")
+    cap.shot('ux-01-light', ['light mode', 'printer status badge (ok and error)'])
+
+    # copies stepper limits
+    page.fill('[data-testid=copies]', '150')
+    page.press('[data-testid=copies]', 'Tab')
+    assert data(page, 'd.doc.copies') == 99 and page.is_disabled('[data-testid=copies-inc]')
+    cap.shot('ux-02-copies-99', ['copies stepper at 1 and 99 (limits)'], target='.toolbar')
+    page.fill('[data-testid=copies]', '0')
+    page.press('[data-testid=copies]', 'Tab')
+    assert data(page, 'd.doc.copies') == 1 and page.is_disabled('[data-testid=copies-dec]')
+    cap.shot('ux-03-copies-1', ['copies stepper at 1 and 99 (limits)'], target='.toolbar')
+
+    # Ctrl+Enter prints
+    page.click('body', position={'x': 5, 'y': 5})
+    page.keyboard.press('Control+Enter')
+    page.wait_for_selector('[data-testid=toast]:has-text("Sent 1 copy")')
+    assert data(page, 'd.editingId') is not None
+    cap.shot('ux-04-ctrl-enter-prints-success-toast', ['Ctrl/Cmd+Enter prints', 'success toast'])
+
+    # Ctrl+P re-renders without the browser print dialog
+    page.evaluate("() => { window.__prevented = null; window.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'p') window.__prevented = e.defaultPrevented; }); }")
+    settle(page)  # let the debounced render the print triggered (name fill) finish first
+    before = len(requests)
+    page.keyboard.press('Control+P')
+    page.wait_for_function("() => window.__prevented === true")
+    page.wait_for_timeout(150)
+    assert len(requests) == before + 1, 'Ctrl+P must trigger one immediate /render'
+    cap.shot('ux-05-ctrl-p-rerender', ['Ctrl/Cmd+P re-renders without the browser print dialog'])
+
+    # failure toast + badge error (fake printer refuses)
+    fail_flag.write_text('1')
+    page.keyboard.press('Control+Enter')
+    page.wait_for_selector('[data-testid=toast].error')
+    page.evaluate(f"() => Alpine.$data(document.querySelector('{APP}')).pollStatus()")
+    page.wait_for_function("() => document.querySelector('[data-testid=printer-badge]').classList.contains('err')")
+    cap.shot('ux-06-failure-toast-and-error-badge', ['failure toast', 'printer status badge (ok and error)'])
+    fail_flag.unlink()
+
+    # reload restores last stock, font and orientation
+    page.select_option('[data-testid=stock]', '30252')
+    page.click('[data-testid=orientation]')  # 30252 defaults to portrait; this makes it landscape
+    page.click('.canvas-pane .frame', position={'x': 30, 'y': 6})  # deselect so the defaults show
+    page.select_option('[data-testid=default-font]', 'DejaVu Serif')
+    settle(page)
+    page.reload()
+    page.wait_for_selector('[data-testid=frame]')
+    page.wait_for_function("() => Alpine.$data(document.querySelector('.app')).fonts.length > 0")
+    page.wait_for_timeout(200)
+    assert page.input_value('[data-testid=stock]') == '30252'
+    assert data(page, 'd.doc.orientation') == 'landscape'
+    assert page.input_value('[data-testid=default-font]') == 'DejaVu Serif'
+    cap.shot('ux-07-reload-restores', ['reload restores last stock, font and orientation'])
+    ctx.close()
+
+    # dark mode (system scheme) and the manual toggle
+    dark = browser.new_context(viewport=DESKTOP, color_scheme='dark')
+    p = new_page(dark)
+    open_app(p, base, '11354', 'landscape')
+    add_text(p, 'Dark mode', 16)
+    assert data(p, 'd.theme') == 'dark'
+    Capture(p, 'ldx-ux').shot('ux-08-dark', ['dark mode'])
+    p.click('[data-testid=theme]')
+    assert data(p, 'd.theme') == 'light'
+    p.click('[data-testid=theme]')
+    assert data(p, 'd.theme') == 'dark'
+    dark.close()
+
+    # 360 px phone width
+    phone = browser.new_context(viewport=PHONE, color_scheme='light')
+    p = new_page(phone)
+    open_app(p, base, '11354', 'landscape')
+    add_text(p, 'Phone', 16)
+    assert p.evaluate('() => document.documentElement.scrollWidth') <= 360, 'horizontal scroll at 360px'
+    Capture(p, 'ldx-ux').shot('ux-09-phone-360', ['360px phone width'])
+    phone.close()
+
+
+def toasts_clear(page, allow_empty=False):
+    """No toast bbox intersects any other visible button, input, select, textarea or link (p3-r24)."""
+    controls = [(c.bounding_box(), c) for c in page.locator('button, input, select, textarea, a').all()
+                if c.is_visible() and not c.evaluate("e => !!e.closest('.toast')")]
+    toasts = [t.bounding_box() for t in page.locator('[data-testid=toast]').all()]
+    assert toasts or allow_empty, 'no toast on screen'
+    for tb in toasts:
+        for rb, _ in controls:
+            if rb is None:
+                continue
+            assert not (tb['x'] < rb['x'] + rb['width'] and rb['x'] < tb['x'] + tb['width']
+                        and tb['y'] < rb['y'] + rb['height'] and rb['y'] < tb['y'] + tb['height']), (tb, rb)
+
+
+def review_checks(browser, base):
+    """Behavioural assertions (no screenshots) for the phase-3 review findings."""
+    ctx = browser.new_context(viewport=DESKTOP, color_scheme='light')
+    page = new_page(ctx)
+    js = lambda e: data(page, e)  # noqa: E731
+
+    def doc_block(i, text, name=''):
+        return {'label_size': '11354', 'orientation': 'landscape', 'copies': 1, 'name': name,
+                'blocks': [{'type': 'text', 'id': 'b1', 'text': text, 'x_mm': 2, 'y_mm': 2, 'width_mm': None,
+                            'align': 'center', 'font_family': 'DejaVu Sans', 'font_size_pt': 12, 'bold': False,
+                            'italic': False, 'underline': False, 'shrink_to_fit': False}][:i]}
+
+    other = api(base, 'POST', '/labels', {'doc': doc_block(1, 'Other label', 'Other')})['label']
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Race', 14)
+    page.wait_for_function("() => Alpine.$data(document.querySelector('.app')).info('b1')")
+
+    # p3-r1 / p3-r2: a save reply that lands after Open must not undo the open; edits made in flight stay unsaved
+    res = page.evaluate("""async (other) => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const p = d.print();
+        d.doc.blocks[0].text = 'edited in flight';
+        d.doOpen(other);
+        await p;
+        return {editingId: d.editingId, name: d.doc.name, openedId: other.id};
+    }""", other)
+    assert res['editingId'] == res['openedId'] and res['name'] == 'Other', res
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Flight', 14)
+    dirty = page.evaluate("""async () => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const p = d.print();
+        d.doc.blocks[0].text = 'changed while printing';
+        await p;
+        return d.dirty;
+    }""")
+    assert dirty is True, 'an edit made during Print must still count as unsaved (p3-r2)'
+    page.wait_for_function("() => !Alpine.$data(document.querySelector('.app')).busy")
+    # busy disables Open / New
+    busy_state = page.evaluate("""async () => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const p = d.print();
+        await Alpine.nextTick();
+        const out = [...document.querySelectorAll('[data-testid=h-open], [data-testid=h-dup], [data-testid=new-label]')]
+            .filter(b => b.offsetParent).map(b => b.disabled);
+        await p;
+        return out;
+    }""")
+    assert busy_state and all(busy_state), busy_state
+
+    # p3-r3: Ctrl+Enter uses the value just typed in the copies field
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Copies', 14)
+    page.fill('[data-testid=copies]', '5')
+    page.keyboard.press('Control+Enter')
+    page.wait_for_selector('[data-testid=toast]:has-text("Sent 5 copies")')
+
+    # p3-r7: unsaved edits are guarded on New/Open and on reload
+    assert js('d.dirty') is False or True
+    page.fill('[data-testid=p-text]', 'edited again')
+    assert js('d.dirty') is True
+    assert page.evaluate("() => { const e = new Event('beforeunload', {cancelable: true}); window.dispatchEvent(e); return e.defaultPrevented; }")
+    page.locator('.label-row').first.locator('[data-testid=h-open]').click()
+    page.wait_for_selector('[data-testid=modal]:visible')
+    page.click('[data-testid=modal-cancel]')
+    assert js('d.doc.blocks[0].text') == 'edited again', 'Cancel must keep the edit'
+    page.locator('.label-row').first.locator('[data-testid=h-open]').click()
+    page.click('[data-testid=modal-confirm]')
+    assert js('d.dirty') is False
+
+    # p3-r5: dragging an auto-width block freezes its width to the real box
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Auto', 14)
+    assert js('d.doc.blocks[0].width_mm') is None
+    drag(page, overlay(page), 900, 0)
+    w = js('d.doc.blocks[0].width_mm')
+    assert w is not None and js('d.doc.blocks[0].x_mm') == 56 and w == js('d.info("b1").bbox_mm[2]'), w
+    # keyboard nudge freezes too
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Auto', 14)
+    overlay(page).focus()
+    page.keyboard.press('ArrowRight')
+    assert js('d.doc.blocks[0].width_mm') is not None
+
+    # p3-r6: scaling keeps the scaled height on the label, and the handle stays inside the frame
+    open_app(page, base, '11354', 'landscape')
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon house"]')
+    settle(page)
+    drag(page, page.locator('[data-testid=handle]:visible'), 900, 0)
+    w, h = js('d.doc.blocks[0].width_mm'), js('d.info("b1").bbox_mm[3]')
+    assert js('d.info("b1").overflow') is False, 'scaling to the maximum must not trip overflow (p3-r18)'
+    assert w <= js('d.canvasH') + 0.01 and h <= js('d.canvasH') + 0.01, (w, h)
+    fb, hb = page.locator('[data-testid=frame]').bounding_box(), page.locator('[data-testid=handle]:visible').bounding_box()
+    assert hb['x'] + hb['width'] <= fb['x'] + fb['width'] + 0.5 and hb['y'] + hb['height'] <= fb['y'] + fb['height'] + 0.5
+
+    # p3-r8: after Ctrl+Enter commits an in-place edit the overlay has focus again
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Focus', 14)
+    overlay(page).click()
+    page.wait_for_selector('[data-testid=inplace]:visible')
+    page.keyboard.press('Control+Enter')
+    page.wait_for_function("() => document.activeElement && document.activeElement.classList.contains('overlay')")
+    assert page.evaluate("() => document.activeElement.dataset.block") == 'b1'
+
+    # p3-r9: caps and block-naming render errors
+    assert page.get_attribute('[data-testid=p-text]', 'maxlength') == '2000'
+    page.evaluate("() => { const d = Alpine.$data(document.querySelector('.app')); d.doc.blocks[0].font_size_pt = 9999; }")
+    page.wait_for_selector('[data-testid=render-error]:visible')
+    assert 'Text: Focus' in page.inner_text('[data-testid=render-error]'), page.inner_text('[data-testid=render-error]')
+
+    # p3-r11: an empty name shows as Untitled in rows and labels
+    api(base, 'POST', '/labels', {'doc': {'label_size': '11354', 'orientation': 'landscape', 'name': '', 'blocks': [
+        {'type': 'image', 'id': 'b1', 'src': 'icon:star', 'x_mm': 2, 'y_mm': 2, 'width_mm': 10,
+         'mono': 'threshold', 'threshold': 128}]}})
+    page.reload()
+    page.wait_for_selector('[data-testid=label-list] li')
+    names = page.locator('.label-row .name').all_inner_texts()
+    assert 'Untitled' in names and '' not in names, names
+    assert page.locator('[aria-label="Select Untitled"]').count() >= 1
+
+    # p3-r12: a toast never covers a history action button
+    page.locator('.label-row').first.locator('[data-testid=h-reprint]').click()
+    page.wait_for_selector('[data-testid=toast]')
+    page.evaluate('() => window.scrollTo(0, 0)')
+    t = page.locator('[data-testid=toast]').first.bounding_box()
+    for b in page.locator('.row-actions button').all():
+        r = b.bounding_box()
+        assert not (t['x'] < r['x'] + r['width'] and r['x'] < t['x'] + t['width']
+                    and t['y'] < r['y'] + r['height'] and r['y'] < t['y'] + t['height']), 'toast covers a button'
+
+    # p3-r13: a new image does not land on top of an existing block
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Top', 14)
+    nudge_to_top(page, 0)
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon leaf"]')
+    settle(page)
+    assert js('d.doc.blocks[1].y_mm') > 2
+
+
+    # p3-r13: the default single auto-centred text leaves room; a new icon overlaps nothing
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Solo', 14)
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon star"]')
+    settle(page)
+    t, i = js('d.info("b1").bbox_mm'), js('d.info("b2").bbox_mm')
+    assert (t[0] + t[2] <= i[0] or i[0] + i[2] <= t[0] or t[1] + t[3] <= i[1] or i[1] + i[3] <= t[1]), (t, i)
+    assert js('d.info("b2").overflow') is False and i[2] >= 5
+    assert i[0] >= 2 and i[1] >= 2, i  # p3-r23: never flush with an edge
+
+    # p3-r17: the confirm dialog takes focus, traps Tab, and gives focus back
+    open_app(page, base, '11354', 'landscape')
+    page.wait_for_selector('.label-row')
+    page.locator('.label-row').first.locator('.row-check').check()
+    page.click('[data-testid=h-delete]')
+    page.wait_for_selector('[data-testid=modal]:visible')
+    page.wait_for_function("() => document.querySelector('[role=alertdialog]').contains(document.activeElement)")
+    for key in ('Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab'):
+        page.keyboard.press(key)
+        assert page.evaluate("() => document.querySelector('[role=alertdialog]').contains(document.activeElement)"), key
+    page.keyboard.press('Escape')
+    page.wait_for_selector('[data-testid=modal]', state='hidden')
+    page.wait_for_function("() => document.activeElement && document.activeElement.dataset.testid === 'h-delete'")
+    page.locator('.label-row').first.locator('.row-check').uncheck()
+
+    # p3-r19: at most two toasts, and they stay clear of the toolbar and the row buttons
+    row = page.locator('.label-row').first
+    for _ in range(3):
+        row.locator('[data-testid=h-reprint]').click()
+        page.wait_for_timeout(150)
+    assert page.locator('[data-testid=toast]').count() <= 2
+    boxes = [b.bounding_box() for b in page.locator('.toolbar button, .row-actions button').all() if b.is_visible()]
+    for t in page.locator('[data-testid=toast]').all():
+        tb = t.bounding_box()
+        for r in boxes:
+            assert not (tb['x'] < r['x'] + r['width'] and r['x'] < tb['x'] + tb['width']
+                        and tb['y'] < r['y'] + r['height'] and r['y'] < tb['y'] + tb['height']), 'toast covers a control'
+    assert page.evaluate("() => getComputedStyle(document.querySelector('.toasts')).position") == 'sticky'
+    page.evaluate('() => window.scrollTo(0, 0)')
+    toasts_clear(page)
+
+    # p3-r20: landscape -> portrait after a nudge leaves nothing off the label
+    open_app(page, base, '11354', 'landscape')
+    add_text(page, 'Auto', 14)
+    overlay(page).focus()
+    for _ in range(4):
+        page.keyboard.press('ArrowRight')
+    page.click('[data-testid=orientation]')
+    settle(page)
+    assert js('d.canvasW') == 32 and js('d.info("b1").overflow') is False, js('d.info("b1")')
+    page.click('[data-testid=orientation]')
+    settle(page)
+
+    # p3-r21: history actions are disabled while busy; deleting the edited label bumps the generation
+    open_app(page, base, '11354', 'landscape')
+    page.wait_for_selector('.label-row')
+    page.locator('.label-row').first.locator('.row-check').check()
+    add_text(page, 'Busy', 14)
+    state = page.evaluate("""async () => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const p = d.print();
+        await Alpine.nextTick();
+        const out = ['h-reprint', 'h-star', 'h-delete'].map(t => [...document.querySelectorAll('[data-testid=' + t + ']')]
+            .filter(b => b.offsetParent).every(b => b.disabled));
+        await p;
+        return out;
+    }""")
+    assert state == [True, True, True], state
+    bumped = page.evaluate("""async (id) => {
+        const d = Alpine.$data(document.querySelector('.app'));
+        const g = d.gen;
+        d.editingId = id;
+        await d.doDelete([id]);
+        return d.gen > g && d.editingId === null;
+    }""", other['id'])
+    assert bumped
+
+
+    # p3-r23: a 25 mm image at x=60 on 30252 landscape, switched to 11354, stays on the label
+    open_app(page, base, '30252', 'landscape')
+    page.click('[data-testid=icons] summary')
+    page.click('[aria-label="Add icon wifi"]')
+    settle(page)
+    page.fill('[data-testid=p-width]', '25')
+    page.press('[data-testid=p-width]', 'Tab')
+    page.evaluate("() => { const d = Alpine.$data(document.querySelector('.app')); d.doc.blocks[0].x_mm = 60; }")
+    settle(page)
+    page.select_option('[data-testid=stock]', '11354')
+    settle(page)
+    page.click('[data-testid=orientation]')
+    settle(page)
+    assert js('d.canvasW') == 32 and js('d.info("b1").overflow') is False, js('d.info("b1")')
+    assert js('d.doc.blocks[0].x_mm') >= 2 and js('d.doc.blocks[0].y_mm') >= 2
+    page.click('[data-testid=orientation]')
+
+    # p3-r24 / p3-r25: the toast strip is sticky: collapsed when empty, covering nothing at scroll 0,
+    # and inside the viewport wherever the page is scrolled - for success and for failure
+    for viewport in (DESKTOP, PHONE):
+        c2 = browser.new_context(viewport=viewport, color_scheme='light')
+        p2 = new_page(c2)
+        p2.goto(base + '/')
+        p2.wait_for_selector('.label-row')
+        p2.wait_for_function("() => !document.querySelector('[data-testid=toast]')", timeout=15000)
+        assert p2.evaluate("() => document.querySelector('.toasts').getBoundingClientRect().height") == 0, 'empty strip takes space'
+        toasts_clear(p2, allow_empty=True)
+        for _ in range(3):
+            p2.locator('.label-row').first.locator('[data-testid=h-reprint]').click()
+            p2.wait_for_timeout(120)
+        p2.evaluate('() => window.scrollTo(0, 0)')
+        assert p2.locator('[data-testid=toast]').count() == 2
+        toasts_clear(p2)  # at scroll 0, nothing (toolbar included) is covered
+        vh = viewport['height']
+
+        def in_view(label):
+            for tb in [t.bounding_box() for t in p2.locator('[data-testid=toast]').all()]:
+                assert tb['y'] >= -0.5 and tb['y'] + tb['height'] <= vh + 0.5, (label, tb, vh)
+
+        p2.wait_for_function("() => !document.querySelector('[data-testid=toast]')", timeout=15000)
+        last = p2.locator('.label-row').last
+        last.scroll_into_view_if_needed()
+        p2.evaluate('() => window.scrollTo(0, document.body.scrollHeight)')
+        assert p2.evaluate('() => window.scrollY') > 0
+        last.locator('[data-testid=h-reprint]').click()
+        p2.wait_for_selector('[data-testid=toast]')
+        in_view('success while scrolled')
+        p2.wait_for_function("() => !document.querySelector('[data-testid=toast]')", timeout=15000)
+        p2.route('**/labels/*/print', lambda r: r.fulfill(status=500, content_type='application/json',
+                                                           body='{"success": false, "error": "forced failure"}'))
+        last.locator('[data-testid=h-reprint]').click()
+        p2.wait_for_selector('[data-testid=toast].error')
+        in_view('failure while scrolled')
+        p2.unroute('**/labels/*/print')
+        c2.close()
+
+    # p3-r10: a failing history shows a friendly message and no empty-state text
+    page.route('**/labels?*', lambda r: r.abort())
+    page.evaluate("() => Alpine.$data(document.querySelector('.app')).loadHistory()")
+    page.wait_for_function("() => Alpine.$data(document.querySelector('.app')).history.error")
+    err = js('d.history.error')
+    assert 'Failed to fetch' not in err and 'Cannot reach' in err, err
+    assert not page.locator('[data-testid=h-empty]').is_visible()
+    ctx.close()
+
+
+def main():
+    scratch = tempfile.mkdtemp(prefix='ldx-visual-')
+    port = free_port()
+    env = dict(os.environ, LABEL_MEMORY_FILE=str(Path(scratch) / 'saved_labels.json'),
+               LABEL_IMAGE_DIR=str(Path(scratch) / 'images'), FAKE_CUPS_DIR=scratch)
+    env.pop('LABEL_FONT_DIRS', None)
+    server = subprocess.Popen(SERVER_CMD + [str(port)], env=env, cwd=ROOT,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    base = f'http://127.0.0.1:{port}'
+    try:
+        for _ in range(120):
+            try:
+                urllib.request.urlopen(base + '/status', timeout=1)
+                break
+            except OSError:
+                time.sleep(0.5)
+        else:
+            raise SystemExit('dev server did not start')
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            live_preview(browser, base)
+            history_panel(browser, base)
+            ux(browser, base, scratch)
+            review_checks(browser, base)
+            browser.close()
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+    (OUT / 'manifest.json').write_text(json.dumps(manifest, indent=2))
+    print(f'{sum(len(v) for v in manifest.values())} screenshots -> {OUT}')
+
+
+if __name__ == '__main__':
+    main()

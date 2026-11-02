@@ -1,0 +1,108 @@
+schema_version: 2
+phase:
+  number: 2
+  title: History store v2 + /labels API + print flow (edit in place, duplicate, stars,
+    migration)
+  tag: agentic
+  depends_on:
+  - 1
+  tracking_issue: null
+  acceptance:
+  - ldx-history-model
+  - ldx-label-name
+  tier: hard
+  files:
+  - cups_dymo_label_printer/store.py
+  - cups_dymo_label_printer/web_app.py
+  - tests/**
+  estimate_lines: 1000
+tasks:
+- number: 1
+  title: 'LabelStore: load, migrate, persist atomically (R12)'
+  steps:
+  - id: P2.T1.S1
+    text: |-
+      RED: `tests/test_store.py` — a captured v1 fixture (`tests/fixtures/saved_labels_v1.json`, produced by running today's `_save_label` on two payloads — capture, don't hand-write) loads as 2 labels in original order, each one centred DejaVu Sans bold text block with `font_size_pt == px*72/300`, orientation = stock shape, timestamps null, print_count 0, starred false; first persist writes `{version: 2, labels}` and `saved_labels.v1.json` backup (byte-identical to the original); a v2 file round-trips; a corrupt file loads empty and is NOT overwritten until a mutation; write is atomic (temp + os.replace — simulate failure of os.replace → original file intact, StoreError raised, in-memory state rolled back). Expected FAIL.
+  - id: P2.T1.S2
+    text: |-
+      GREEN: `cups_dymo_label_printer/store.py` — `LabelStore(path)` with a `threading.Lock`, UTC ISO timestamps via an injectable `now()` for tests. Tests PASS.
+- number: 2
+  title: 'Operations: list/search/sort/stars, create/update/duplicate/delete, name
+    default (R13, R14, R15, R25)'
+  steps:
+  - id: P2.T2.S1
+    text: |-
+      RED: tests — `update(id, doc)` keeps id, sets updated_at > created_at, other fields untouched; `duplicate(id)` new id, created_at now, starred false, last_printed_at null, print_count 0, original unchanged; `set_star`; `list(sort='last_printed'|'created'|'name', q=, starred_only=)` puts starred first under every sort, nulls last for last_printed, case-insensitive q over name and all text blocks; `create` with empty name → first non-empty line of the first text block; `delete([ids])`. Expected FAIL.
+  - id: P2.T2.S2
+    text: |-
+      GREEN implement; tests PASS.
+  - id: P2.T2.S3
+    text: |-
+      REFACTOR: one `_mutate(fn)` helper wrapping lock + snapshot + persist + rollback for every mutation; full suite green.
+- number: 3
+  title: record_print + /print flow (R16)
+  steps:
+  - id: P2.T3.S1
+    text: |-
+      RED: tests — `record_print(doc)` with no id bumps a content-matching entry (same id, print_count+1, last_printed_at set) else creates; `/print {doc, id}` saves in place then prints then bumps; pre-print save failure → 500 and the stub printer is NOT called; post-print history failure → 200 `{success: true, job_id, warning}`; response carries `label`. Rewrite `tests/test_web_app.py:182` to expect the SAME id and print_count 2. Expected FAIL.
+  - id: P2.T3.S2
+    text: |-
+      GREEN: replace `_save_label`/`_saved_labels` in web_app.py with the store; tests PASS.
+- number: 4
+  title: /labels routes, thumbnail, /memory alias (R13)
+  steps:
+  - id: P2.T4.S1
+    text: |-
+      RED: `tests/test_routes_labels.py` — GET /labels (q, sort, starred), POST /labels, GET/PUT/DELETE /labels/<id> (404 unknown), DELETE /labels {ids}, POST /labels/<id>/duplicate, PUT /labels/<id>/star, POST /labels/<id>/print (re-print without editor, bumps), GET /labels/<id>/thumbnail.png (image/png, 100 DPI size), GET /memory = v2 labels + flat `text`/`font_size` px/`align`, DELETE /memory → `{success, remaining}` same shape. Update tests/test_web_app.py:239,240,275 for the v2 file shape. Expected FAIL.
+  - id: P2.T4.S2
+    text: |-
+      GREEN: implement the routes; tests PASS.
+  - id: P2.T4.S3
+    text: |-
+      Run the full suite into a log after the last code commit: `uv run --no-project --with flask --with pillow --with cairosvg --with pytest --with pytest-cov --with pytest-mock python -m pytest > $TMPDIR/p2-suite.log 2>&1` → all pass.
+state:
+  steps:
+    P2.T1.S1:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+    P2.T1.S2:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+    P2.T2.S1:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+    P2.T2.S2:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+    P2.T2.S3:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+    P2.T3.S1:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+    P2.T3.S2:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+    P2.T4.S1:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+    P2.T4.S2:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+    P2.T4.S3:
+      state: x
+      ticked_at: '2026-11-01T19:41:04+00:00'
+      note: null
+  completion:
+    at: '2026-11-01T19:41:04+00:00'
+    note: null
+    observed_prs: []

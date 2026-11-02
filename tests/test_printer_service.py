@@ -53,7 +53,12 @@ def test_print_builds_options_and_cleans_temp(printer_service):
     printer, path, job_title, options = fake_conn.print_calls[0]
     assert printer == "dymo"
     assert job_title == "Label"
-    assert options == {"media": "w162h90", "fit-to-page": "True", "copies": "2"}
+    assert options == {
+        "media": "w162h90",
+        "fit-to-page": "True",
+        "orientation-requested": "3",
+        "copies": "2",
+    }
     assert not os.path.exists(path)
 
 
@@ -92,3 +97,50 @@ def test_report_printer_status_missing(printer_service):
     status = service.get_printer_status()
 
     assert status == {"error": "Printer not found"}
+
+
+@pytest.mark.parametrize(
+    "label_size,size,rotated",
+    [
+        ("30252", (28, 89), False),
+        ("30252", (89, 28), True),
+        ("11354", (57, 32), False),
+        ("11354", (32, 57), True),
+    ],
+)
+def test_orient_for_media_rotates_only_when_aspect_differs(printer_service, label_size, size, rotated):
+    _, _, ps = printer_service
+    image = Image.new("1", size, 1)
+
+    result = ps.orient_for_media(image, label_size)
+
+    assert result.size == (size[::-1] if rotated else size)
+
+
+def test_orient_for_media_rotates_270(printer_service):
+    _, _, ps = printer_service
+    image = Image.new("L", (4, 2), 255)
+    image.putpixel((0, 0), 0)  # top-left black
+
+    result = ps.orient_for_media(image, "30252")
+
+    # ROTATE_270 (clockwise 90): top-left lands at top-right
+    assert result.size == (2, 4)
+    assert result.getpixel((1, 0)) == 0
+
+
+def test_print_image_sends_rotated_file(printer_service):
+    service, fake_conn, _ = printer_service
+    sent = []
+    original = fake_conn.printFile
+
+    def capture(printer, path, title, options):
+        with Image.open(path) as sent_img:
+            sent.append(sent_img.size)
+        return original(printer, path, title, options)
+
+    fake_conn.printFile = capture
+
+    service.print_image(Image.new("1", (89, 28), 1), label_size="30252")
+
+    assert sent == [(28, 89)]

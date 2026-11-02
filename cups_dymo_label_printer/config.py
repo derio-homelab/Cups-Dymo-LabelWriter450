@@ -56,4 +56,5 @@ DEFAULT_PRINTER_NAME = 'dymo'
 # Image generation settings
 DEFAULT_DPI = 300
 DEFAULT_FONT_SIZE = 40
-DEFAULT_FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+DEFAULT_FONT_FAMILY = 'DejaVu Sans'
+DEFAULT_FONT_BOLD = True

@@ -4,13 +4,31 @@ CUPS printer service module.
 Handles communication with CUPS for printing labels.
 """
 
-import tempfile
 import os
+import re
+import tempfile
 from typing import Any, Optional
 from PIL import Image
 import cups
 
 from .config import DEFAULT_PRINTER_NAME, LABEL_SIZES
+
+
+_MEDIA_RE = re.compile(r'w(\d+)h(\d+)')
+
+
+def orient_for_media(image: Image.Image, label_size: str) -> Image.Image:
+    """
+    Rotate the rendered image 90 degrees when its aspect differs from the media's.
+
+    The CUPS media (``wNNNhNNN``) fixes the paper orientation; a design drawn
+    in the other shape is rotated here (clockwise) so it prints as previewed.
+    """
+    match = _MEDIA_RE.fullmatch(LABEL_SIZES[label_size]['cups'])
+    media_w, media_h = int(match.group(1)), int(match.group(2))
+    if (image.width > image.height) != (media_w > media_h):
+        return image.transpose(Image.Transpose.ROTATE_270)
+    return image
 
 
 class PrinterService:
@@ -64,8 +82,8 @@ class PrinterService:
         if label_size not in LABEL_SIZES:
             raise ValueError(f"Unknown label size: {label_size}")
 
-        # Save image to temporary file
-        tmp_path = self._save_temp_image(image)
+        # Save image (rotated to the media's aspect) to temporary file
+        tmp_path = self._save_temp_image(orient_for_media(image, label_size))
 
         try:
             # Get print options
@@ -130,6 +148,8 @@ class PrinterService:
         return {
             'media': size_info['cups'],
             'fit-to-page': 'True',
+            # portrait, no CUPS auto-rotation: the image is already oriented
+            'orientation-requested': '3',
             'copies': str(copies)
         }
 

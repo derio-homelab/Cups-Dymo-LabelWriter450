@@ -4,7 +4,7 @@ A web-based label printing solution for Dymo LabelWriter 450 using CUPS in a Doc
 
 ## Features
 
-- 🎨 Beautiful web interface for designing labels
+- 🎨 One web designer: live preview inside the label, in-place editing, fonts, images and icons, history with stars
 - 📏 Support for multiple Dymo label sizes (11354, 30252, 30323, 30256, 99012)
 - ↔️ Text alignment options (left, center, right)
 - 🔢 Customizable font size
@@ -26,6 +26,7 @@ python-Cups-Dymo-LabelWriter450/
 │   ├── label_generator.py      # Label image generation
 │   ├── printer_service.py      # CUPS interface
 │   ├── web_app.py             # Flask web application
+│   ├── static/                # app.js, app.css, vendored Alpine.js, icons
 │   └── templates/             # HTML templates
 ├── tests/                      # Test suite (TDD)
 ├── docs/                       # Documentation
@@ -36,6 +37,21 @@ python-Cups-Dymo-LabelWriter450/
 ├── pyproject.toml             # Poetry dependencies
 └── README.md                  # This file
 ```
+
+## Web UI and configuration
+
+There is a single web UI (`cups_dymo_label_printer`, served on port 5000); the old top-level
+`web_app/` copy is gone. It needs no network access: Alpine.js is vendored under `static/vendor/`.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `LABEL_MEMORY_FILE` | `saved_labels.json` | the label history file |
+| `LABEL_FONT_DIRS` | `/usr/share/fonts` | directories scanned for the curated font families |
+| `LABEL_IMAGE_DIR` | `images/` beside the history file | uploaded images |
+| `LABEL_MAX_UPLOAD_MB` | `5` | largest accepted image upload |
+
+To try the UI without CUPS, run `python scripts/dev_server.py`; `scripts/capture_visual.py`
+drives it in a browser and writes screenshots to the git-ignored `scripts/tmp/visual/`.
 
 ## Installation
 

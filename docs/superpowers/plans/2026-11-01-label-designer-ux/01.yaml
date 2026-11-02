@@ -1,0 +1,214 @@
+schema_version: 2
+phase:
+  number: 1
+  title: 'Renderer: fonts, images, multi-line, orientation, /render — with the CI
+    test job as skeleton'
+  tag: agentic
+  depends_on: []
+  tracking_issue: null
+  acceptance:
+  - ldx-image-build
+  - ldx-fonts
+  - ldx-images
+  - ldx-orientation
+  - ldx-print-orientation
+  - ldx-print-mono
+  skeleton: true
+  tier: standard
+  files:
+  - .github/workflows/Tests.yaml
+  - tests/**
+  - cups_dymo_label_printer/config.py
+  - cups_dymo_label_printer/fonts.py
+  - cups_dymo_label_printer/document.py
+  - cups_dymo_label_printer/images.py
+  - cups_dymo_label_printer/label_generator.py
+  - cups_dymo_label_printer/printer_service.py
+  - cups_dymo_label_printer/web_app.py
+  - cups_dymo_label_printer/static/icons/**
+  - Dockerfile
+  - pyproject.toml
+  estimate_lines: 1400
+tasks:
+- number: 1
+  title: 'Smoke: CI runs pytest (session-wide fake cups, trivial test)'
+  steps:
+  - id: P1.T1.S1
+    text: |
+      RED: add `tests/test_smoke.py::test_package_imports_without_pycups` that does `import cups_dymo_label_printer.web_app` with NO per-test stub. Run the suite with
+      `uv run --no-project --with flask --with pillow --with cairosvg --with pytest --with pytest-cov --with pytest-mock python -m pytest -q tests/test_smoke.py` → expected FAIL (ModuleNotFoundError: cups) when run in isolation.
+  - id: P1.T1.S2
+    text: |
+      GREEN: add `tests/conftest.py` installing a session-scoped fake `cups` module in `sys.modules` (a `Connection` class with `printFile`/`getPrinters`, as in tests/test_web_app.py:28-40) before any package import; keep the per-test fixtures working. Same command → PASS; full suite → 28 existing + 1 pass.
+  - id: P1.T1.S3
+    text: |
+      Add `.github/workflows/Tests.yaml` (on: [push]; ubuntu-latest; actions/setup-python 3.12; `sudo apt-get install -y fonts-dejavu-core fonts-liberation libcairo2`; `pip install flask pillow cairosvg pytest pytest-cov pytest-mock`; `pytest`). Validate with `yamllint -c .yamllint.yaml .github/workflows/Tests.yaml` (expected: no errors). Commit and push the branch; the Tests workflow run is green on that commit (`gh run list --branch feat/label-designer-ux --workflow Tests.yaml`).
+- number: 2
+  title: Font catalog + /fonts (R1, R3 fallback)
+  steps:
+  - id: P1.T2.S1
+    text: |
+      Vendor Liberation Sans 2.x Regular + Bold TTFs and the SIL OFL 1.1 LICENSE into `tests/fixtures/fonts/` (copy the files from a pip/apt-provided Liberation package or the upstream release tarball — real files, never constructed).
+      RED: `tests/test_fonts.py` — with `LABEL_FONT_DIRS` = fixture dir, `list_fonts()` returns exactly `[{family: 'Liberation Sans', styles: ['regular','bold']}]`; families with no files are omitted; `resolve('Liberation Sans', bold=True, italic=True)` returns the bold file (nearest style) ; `resolve('Noto Serif', …)` falls back down the chain DEFAULT_FONT_FAMILY → first available family → PIL default, with `substituted=True`; with an empty dir it returns PIL's default font. Expected: FAIL (module missing).
+  - id: P1.T2.S2
+    text: |
+      GREEN: `cups_dymo_label_printer/fonts.py` — `CATALOG` (8 families from R1 → style → candidate file names, e.g. DejaVu Sans bold → `DejaVuSans-Bold.ttf`; Liberation Sans regular → `LiberationSans-Regular.ttf`; Noto Sans → `NotoSans-Regular.ttf`…), recursive scan of `FONT_DIRS` (env `LABEL_FONT_DIRS`, os.pathsep-separated, default `/usr/share/fonts`) with `functools.lru_cache` + `reset_cache()` for tests, `list_fonts()`, `resolve(family, bold, italic) -> ResolvedFont(path|None, style, substituted)`, `load(family, bold, italic, size_px)`. In `config.py` replace `DEFAULT_FONT_PATH` with `DEFAULT_FONT_FAMILY = 'DejaVu Sans'` (+ `DEFAULT_FONT_BOLD = True`). Tests → PASS.
+  - id: P1.T2.S3
+    text: |-
+      REFACTOR: grep for `DEFAULT_FONT_PATH` (expected: no hits outside git history); full suite green.
+- number: 3
+  title: Label document model + v1 conversion helpers (R2, R12 conversion, fractional
+    pt)
+  steps:
+  - id: P1.T3.S1
+    text: |
+      RED: `tests/test_document.py` — `LabelDoc.from_json` validates stock (400-class `ValueError('Unknown label size: X')`), orientation (`portrait|landscape`, default = stock shape: 30252 → portrait, 11354 → landscape), blocks (`text`/`image`, unknown type → ValueError), `font_size_pt` accepts 9.6; `canvas_mm(doc)` = (min,max) for portrait, (max,min) for landscape; `from_flat({'text','label_size','font_size':40,'align'})` gives one centred text block (DejaVu Sans, bold, `font_size_pt == 9.6`, `y_mm is None`) and `pt_to_px(9.6, 300) == 40`; `content_key(doc)` ignores block ids and copies. Expected FAIL.
+  - id: P1.T3.S2
+    text: |-
+      GREEN: `cups_dymo_label_printer/document.py` with dataclasses `TextBlock`, `ImageBlock`, `LabelDoc`, `from_json`/`to_json`, `from_flat`, `canvas_mm`, `pt_to_px = round(pt*dpi/72)`, `px_to_pt = px*72/300`, `content_key` (canonical sorted JSON). Tests PASS.
+  - id: P1.T3.S3
+    text: |-
+      REFACTOR: single source for defaults (margins 2 mm, threshold 128) as module constants; full suite green.
+- number: 4
+  title: 'Renderer: multi-block, multi-line, underline, shrink-to-fit, overflow, mode
+    1 (R2, R4, R7, R19 backend)'
+  steps:
+  - id: P1.T4.S1
+    text: |
+      RED: `tests/test_render.py` (fixture fonts) — `render(doc)` returns mode `1` image of canvas size at 300 DPI for every stock × orientation; a 3-line block's bbox height ≈ 3 × line height and > a 1-line block's; two blocks of 24 pt and 8 pt produce bboxes of proportional height; underline=True adds dark pixels below the baseline vs False; a block too large for the label reports `overflow: True`; with `shrink_to_fit` it reports `overflow: False` and a size ≥ 6 pt; an unknown family reports `font_substituted: True`; `create_label_image('Hello World')` still returns RGB, white at (0,0), correct size (existing tests/test_label_generator.py stay green). Expected FAIL.
+  - id: P1.T4.S2
+    text: |-
+      GREEN: rewrite `label_generator.py` — `render(doc, dpi=300) -> RenderResult(image, blocks)`; per text block: lines = text.split('\n'), line height from `font.getmetrics()`, per-line alignment within the box (x_mm, width_mm or label width − 2×2 mm), `y_mm None` → vertical centring, underline via `draw.line` at baseline+descent/2, shrink loop (−0.5 pt to 6 pt); bbox_mm returned in design coords; draw on `L`, convert text with threshold 128 to `1`. `create_label_image(...)` = `render(from_flat(...)).image.convert('RGB')`. Tests PASS.
+  - id: P1.T4.S3
+    text: |-
+      REFACTOR: extract `_layout_text_block` (pure: returns lines + positions) from drawing; full suite green.
+- number: 5
+  title: 'Images: upload storage, icons, SVG, threshold/dither (R5, R6, R7)'
+  steps:
+  - id: P1.T5.S1
+    text: |
+      Ship ~20 Lucide SVG icons (MIT; e.g. home, box, tag, star, heart, phone, mail, map-pin, calendar, clock, wrench, plug, wifi, coffee, utensils, leaf, trash-2, recycle, alert-triangle, info) into `cups_dymo_label_printer/static/icons/` with `LICENSE` (Lucide ISC/MIT text), fetched from the lucide-static npm package (`npm pack lucide-static@0.460.0`), not hand-drawn.
+      RED: `tests/test_images.py` — `store_upload(bytes, filename)` sniffs type from bytes (PNG/JPEG/SVG ok; GIF/text → `UnsupportedImage`), rejects > `LABEL_MAX_UPLOAD_MB` with `ImageTooLarge`, writes `<LABEL_IMAGE_DIR>/<sha256>.<ext>` and returns `upload:<sha>.<ext>`; same bytes twice → same ref, one file; `list_icons()` returns ≥ 20 `{name, url}`; `load_image('icon:star', width_px=200)` returns a 200-px-wide image via cairosvg; `to_mono(img,'threshold',128)` and `'dither'` both return mode `1` with differing pixel data for a gradient fixture; a missing ref raises `ImageMissing`. Expected FAIL.
+  - id: P1.T5.S2
+    text: |-
+      GREEN: `cups_dymo_label_printer/images.py` (`LABEL_IMAGE_DIR` default = `<dirname(LABEL_MEMORY_FILE)>/images`), Pillow `Image.convert('1', dither=Image.Dither.FLOYDSTEINBERG|NONE)` with point() threshold; wire image blocks into `render` (aspect kept from width_mm; missing → `missing: True`, nothing drawn). Add `cairosvg` to pyproject dependencies. Tests PASS.
+  - id: P1.T5.S3
+    text: |-
+      REFACTOR: render-time image cache keyed by (ref, width_px, mono, threshold) with an LRU bound of 64; full suite green.
+- number: 6
+  title: Orientation at print (R11)
+  steps:
+  - id: P1.T6.S1
+    text: |-
+      RED: `tests/test_printer_service.py` — `orient_for_media(img, '30252')` leaves a 28×89-shaped image unchanged and rotates an 89×28-shaped one 90° (result size swapped); same for 11354 (media w162h90 is wide); `_get_print_options` now includes `orientation-requested: '3'` with `fit-to-page: 'True'`; `print_image` sends the rotated temp file. Expected FAIL.
+  - id: P1.T6.S2
+    text: |-
+      GREEN: implement `orient_for_media` (parse `w(\d+)h(\d+)` from `LABEL_SIZES[...]['cups']`, rotate with `Image.Transpose.ROTATE_270` when aspects differ) and call it in `print_image`; add the option. Update the *Printer Service* scenario in Acceptance_Tests.md for the new option. Tests PASS.
+- number: 7
+  title: 'Routes: /fonts, /icons, /images, /render, /preview compat (R1, R5, R6, R8)'
+  steps:
+  - id: P1.T7.S1
+    text: |-
+      RED: `tests/test_routes_render.py` — GET /fonts lists fixture family; GET /icons ≥ 20; POST /images (multipart) → 200 `{ref}`; > limit → 413; text/plain → 400; GET /images/<name> serves bytes; POST /render with a 2-block doc → `{success, image: data:image/png;base64…, width_mm, height_mm, blocks:[{id,bbox_mm:[x,y,w,h],overflow,font_substituted,missing}]}`; bad stock → 400; POST /preview with the old flat payload still returns `{success, image}` (existing tests stay green). Expected FAIL.
+  - id: P1.T7.S2
+    text: |-
+      GREEN: add the routes in `web_app.py` (`app.config['MAX_CONTENT_LENGTH']` = limit + small overhead, 413 handler returning JSON), `/print` accepting `{doc,…}` as well as flat payload (history behaviour unchanged in this phase). Tests PASS.
+- number: 8
+  title: Image dependencies in Docker (R22)
+  steps:
+  - id: P1.T8.S1
+    text: |-
+      Add `fonts-dejavu-core fonts-liberation fonts-noto-core python3-cairosvg` to the runtime apt list in `Dockerfile`; run `hadolint --failure-threshold error Dockerfile` (expected: exit 0). Push; the Build workflow (`docker build`) is green on the pushed commit.
+  - id: P1.T8.S2
+    text: |-
+      Run the full suite into a log after the last code commit: `uv run --no-project --with flask --with pillow --with cairosvg --with pytest --with pytest-cov --with pytest-mock python -m pytest > $TMPDIR/p1-suite.log 2>&1` → all pass.
+state:
+  steps:
+    P1.T1.S1:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T1.S2:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T1.S3:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T2.S1:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T2.S2:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T2.S3:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T3.S1:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T3.S2:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T3.S3:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T4.S1:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T4.S2:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T4.S3:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T5.S1:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T5.S2:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T5.S3:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T6.S1:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T6.S2:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T7.S1:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T7.S2:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T8.S1:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+    P1.T8.S2:
+      state: x
+      ticked_at: '2026-11-01T19:11:33+00:00'
+      note: null
+  completion:
+    at: '2026-11-01T19:11:33+00:00'
+    note: null
+    observed_prs: []

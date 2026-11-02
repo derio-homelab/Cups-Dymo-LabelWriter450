@@ -1,0 +1,463 @@
+"""
+Saved-label history (v2) over a JSON file (R12-R16, R25).
+
+The file holds ``{"version": 2, "labels": [...]}``. A version-1 file (a bare list
+of flat entries) is migrated on load and backed up byte-for-byte to
+``<stem>.v1.json`` by the first write. A file that cannot be parsed loads empty
+and is left untouched until the first mutation, which keeps a copy of it as
+``<stem>.corrupt.json`` before writing. Every write is atomic (temp file in the
+same directory + ``os.replace``); a failed write raises ``StoreError`` and
+rolls the in-memory state back. One lock serialises every read and mutation.
+"""
+
+import copy
+import json
+import logging
+import math
+import os
+import tempfile
+import threading
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Optional
+
+from .config import DEFAULT_FONT_BOLD, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_LABEL_SIZE, LABEL_SIZES
+from .document import (ALIGNMENTS, LabelDoc, TextBlock, content_key, default_orientation,
+                       font_cap_pt, pt_to_px, px_to_pt)
+
+log = logging.getLogger(__name__)
+
+VERSION = 2
+
+
+def _read_umask() -> int:
+    # os.umask can only be read by setting it; done once, at import, so no
+    # concurrent file creation ever sees the temporary 0.
+    current = os.umask(0o022)
+    os.umask(current)
+    return current
+
+
+_UMASK = _read_umask()
+
+
+class StoreError(Exception):
+    """The history file could not be written (or read for a mutation)."""
+
+
+class LabelNotFound(KeyError):
+    """No saved label has the given id."""
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat(timespec='milliseconds').replace(
+        '+00:00', 'Z')
+
+
+def default_name(doc: LabelDoc) -> str:
+    """The first non-empty line of the first text block (R25)."""
+    for block in doc.blocks:
+        if isinstance(block, TextBlock):
+            for line in block.text.splitlines():
+                if line.strip():
+                    return line.strip()
+            return ''
+    return ''
+
+
+DESIGN_FIELDS = ('name', 'label_size', 'orientation', 'copies', 'blocks')
+
+
+def _named(doc: LabelDoc) -> LabelDoc:
+    """A copy of ``doc`` whose empty name is replaced by its default (R25)."""
+    doc = copy.deepcopy(doc)
+    if not doc.name.strip():
+        doc.name = default_name(doc)
+    return doc
+
+
+def _v1_number(value, default, minimum):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    if not math.isfinite(value) or value < minimum:
+        return default
+    return value
+
+
+def _migrate_v1_entry(entry: dict) -> dict:
+    """Lenient v1 -> v2: anything v1 could have saved is kept, defaulted or clamped."""
+    if not isinstance(entry, dict):
+        raise ValueError('v1 entry must be an object')
+    label_size = entry.get('label_size')
+    if label_size not in LABEL_SIZES:
+        label_size = DEFAULT_LABEL_SIZE
+    font_px = _v1_number(entry.get('font_size'), DEFAULT_FONT_SIZE, 1e-9)
+    text = entry.get('text')
+    text = '' if text is None else str(text)
+    align = entry.get('align')
+    block = TextBlock(
+        id='b1', text=text,
+        align=align if align in ALIGNMENTS else 'center',  # v1 drew unknown alignments centred
+        font_family=DEFAULT_FONT_FAMILY,
+        font_size_pt=min(px_to_pt(font_px), font_cap_pt(label_size)),
+        bold=DEFAULT_FONT_BOLD,
+    )
+    copies = _v1_number(entry.get('copies'), 1, 1)
+    doc = LabelDoc(label_size=label_size, orientation=default_orientation(label_size),
+                   copies=int(copies), blocks=[block])
+    label_id = entry.get('id')
+    result = _entry(str(label_id) if label_id not in (None, '') else str(uuid.uuid4()),
+                    _named(doc), None)
+    result['migrated'] = True
+    return result
+
+
+def doc_of(label: dict) -> LabelDoc:
+    """The document of a stored label (migrated v1 text is exempt from the text caps)."""
+    return LabelDoc.from_json(label, text_caps=not label.get('migrated', False))
+
+
+def _entry(label_id: str, doc: LabelDoc, stamp: Optional[str]) -> dict:
+    data = doc.to_json()
+    return {
+        'id': label_id,
+        'name': data['name'],
+        'label_size': data['label_size'],
+        'orientation': data['orientation'],
+        'copies': data['copies'],
+        'starred': False,
+        'created_at': stamp,
+        'updated_at': stamp,
+        'last_printed_at': None,
+        'print_count': 0,
+        'blocks': data['blocks'],
+    }
+
+
+def _validated_v2_entry(raw: dict) -> dict:
+    if not isinstance(raw, dict) or not isinstance(raw.get('id'), str) or not raw['id']:
+        raise ValueError('label needs an id')
+    doc = doc_of(raw)
+    entry = _entry(raw['id'], doc, None)
+    if raw.get('migrated') is True:
+        entry['migrated'] = True
+    for key in ('created_at', 'updated_at', 'last_printed_at'):
+        value = raw.get(key)
+        if value is not None:
+            if not isinstance(value, str):
+                raise ValueError(f'{key} must be a string')
+            parse_timestamp(value)
+        entry[key] = value
+    if not isinstance(raw.get('starred', False), bool):
+        raise ValueError('starred must be a boolean')
+    entry['starred'] = raw.get('starred', False)
+    count = raw.get('print_count', 0)
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ValueError('print_count must be a non-negative integer')
+    entry['print_count'] = count
+    return entry
+
+
+SORT_FIELDS = {'last_printed': 'last_printed_at', 'created': 'created_at', 'name': None}
+SORTS = tuple(SORT_FIELDS)
+DEFAULT_SORT = 'last_printed'
+
+
+def parse_timestamp(value: str) -> datetime:
+    moment = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+_NEVER = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _moment(value: Optional[str]) -> datetime:
+    return parse_timestamp(value) if value else _NEVER
+
+
+def _adopt(entry: dict, doc: LabelDoc, stamp: str) -> None:
+    """A content match takes the printed doc's copies, and its name when that was
+    set explicitly (non-empty and not just the default name) (R16)."""
+    name = doc.name.strip()
+    changes = {'copies': doc.copies}
+    if name and name != default_name(doc):
+        changes['name'] = doc.name
+    if any(entry[k] != v for k, v in changes.items()):
+        entry.update(changes)
+        entry['updated_at'] = stamp
+
+
+def _matches(label: dict, needle: str) -> bool:
+    if not needle:
+        return True
+    haystacks = [label['name']] + [b['text'] for b in label['blocks'] if b['type'] == 'text']
+    return any(needle in h.casefold() for h in haystacks)
+
+
+def _sorted(labels: list, sort: str) -> list:
+    """Starred first; then by name (A-Z) or newest timestamp first, unknown last. Stable."""
+    field = SORT_FIELDS[sort]
+    if field is None:
+        ordered = sorted(labels, key=lambda l: l['name'].casefold())
+    else:
+        dated = sorted((l for l in labels if l[field]),
+                       key=lambda l: parse_timestamp(l[field]), reverse=True)
+        ordered = dated + [l for l in labels if not l[field]]
+    return sorted(ordered, key=lambda l: not l['starred'])
+
+
+class LabelStore:
+    def __init__(self, path, now: Callable[[], datetime] = _utc_now):
+        self._path = Path(path)
+        self._now = now
+        self._lock = threading.Lock()
+        self._labels: list = []
+        self._v1_bytes: Optional[bytes] = None       # pending v1 backup
+        self._corrupt_bytes: Optional[bytes] = None  # pending copy of a lossy load
+        self._unreadable = False
+        self._load()
+
+    # --- loading ------------------------------------------------------------
+
+    def _load(self) -> None:
+        try:
+            with open(self._path, 'rb') as fh:
+                raw = fh.read()
+        except FileNotFoundError:
+            return
+        except OSError:
+            log.exception('cannot read label history %s; mutations refused', self._path)
+            self._unreadable = True
+            return
+        try:
+            data = json.loads(raw.decode('utf-8'))
+        except (UnicodeDecodeError, ValueError):
+            log.error('label history %s is not valid JSON; loading empty', self._path)
+            self._corrupt_bytes = raw
+            return
+        if isinstance(data, list):
+            self._labels = self._load_entries(data, _migrate_v1_entry, raw, mint_duplicates=True)
+            self._v1_bytes = raw
+            self._corrupt_bytes = None  # the v1 backup already keeps everything
+        elif (isinstance(data, dict) and data.get('version') == VERSION
+              and isinstance(data.get('labels'), list)):
+            self._labels = self._load_entries(data['labels'], _validated_v2_entry, raw)
+        else:
+            log.error('label history %s has an unknown shape; loading empty', self._path)
+            self._corrupt_bytes = raw
+
+    def _load_entries(self, items: list, convert, raw: bytes,
+                      mint_duplicates: bool = False) -> list:
+        labels, seen = [], set()
+        for item in items:
+            try:
+                entry = convert(item)
+                if entry['id'] in seen:
+                    if not mint_duplicates:
+                        raise ValueError(f"duplicate id {entry['id']}")
+                    entry['id'] = str(uuid.uuid4())
+            except (ValueError, TypeError, AttributeError) as e:
+                log.warning('skipping unreadable saved label in %s: %s', self._path, e)
+                self._corrupt_bytes = raw
+                continue
+            seen.add(entry['id'])
+            labels.append(entry)
+        return labels
+
+    # --- persistence --------------------------------------------------------
+
+    def _file_mode(self) -> int:
+        """Permission bits for anything written: the history file's own (0o777 only, so
+        setuid/setgid/sticky never propagate), else the umask default.
+
+        Backups and corrupt copies take the history file's mode too, so a
+        restricted saved_labels.json never yields a looser copy.
+        """
+        try:
+            return os.stat(self._path).st_mode & 0o777
+        except FileNotFoundError:
+            return 0o666 & ~_UMASK
+
+    def _write_atomic(self, path: Path, payload: bytes) -> None:
+        mode = self._file_mode()
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f'.{path.name}.', suffix='.tmp')
+        try:
+            os.fchmod(fd, mode)  # mkstemp makes 0600
+            with os.fdopen(fd, 'wb') as fh:
+                fh.write(payload)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+
+    def _keep_copy(self, suffix: str, payload: bytes) -> None:
+        """Write ``payload`` to ``<stem>.<suffix>.json`` unless already there; never overwrite."""
+        stem = self._path.stem
+        n = 0
+        while True:
+            name = f'{stem}.{suffix}.json' if n == 0 else f'{stem}.{suffix}.{n}.json'
+            target = self._path.with_name(name)
+            if not target.exists():
+                self._write_atomic(target, payload)
+                return
+            if target.read_bytes() == payload:
+                return
+            n += 1
+
+    def _persist(self) -> None:
+        if self._unreadable:
+            raise StoreError(f'label history {self._path} is unreadable; not overwriting it')
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            if self._v1_bytes is not None:
+                self._keep_copy('v1', self._v1_bytes)
+            if self._corrupt_bytes is not None:
+                self._keep_copy('corrupt', self._corrupt_bytes)
+            payload = json.dumps({'version': VERSION, 'labels': self._labels},
+                                 ensure_ascii=False, indent=1).encode('utf-8')
+            self._write_atomic(self._path, payload)
+        except OSError as e:
+            log.exception('cannot write label history %s', self._path)
+            raise StoreError(f'Could not save label history: {e}') from e
+        self._v1_bytes = None
+        self._corrupt_bytes = None
+
+    def _mutate(self, change: Callable[[], object]):
+        """Apply ``change`` under the lock, persist, and roll back on any failure."""
+        with self._lock:
+            snapshot = copy.deepcopy(self._labels)
+            try:
+                result = change()
+                self._persist()
+            except BaseException:
+                self._labels = snapshot
+                raise
+            return copy.deepcopy(result)
+
+    # --- queries ------------------------------------------------------------
+
+    def _find(self, label_id: str) -> dict:
+        for entry in self._labels:
+            if entry['id'] == label_id:
+                return entry
+        raise LabelNotFound(label_id)
+
+    def get(self, label_id: str) -> dict:
+        with self._lock:
+            return copy.deepcopy(self._find(label_id))
+
+    def list(self, q: Optional[str] = None, sort: str = DEFAULT_SORT,
+             starred_only: bool = False) -> list:
+        """Labels matching ``q`` (case-insensitive, name + every text block), starred first."""
+        if sort not in SORTS:
+            raise ValueError(f'Unknown sort: {sort}')
+        needle = (q or '').strip().casefold()
+        with self._lock:
+            labels = [l for l in self._labels
+                      if (not starred_only or l['starred']) and _matches(l, needle)]
+            return copy.deepcopy(_sorted(labels, sort))
+
+    def _content_match(self, key: str) -> Optional[dict]:
+        """The matching entry printed most recently (then updated most recently, then
+        first in list order); ``None`` when nothing matches."""
+        matches = [e for e in self._labels if content_key(doc_of(e)) == key]
+        if not matches:
+            return None
+        return max(matches, key=lambda e: (_moment(e['last_printed_at']),
+                                           _moment(e['updated_at'])))
+
+    # --- mutations ----------------------------------------------------------
+
+    def _new_entry(self, doc: LabelDoc, stamp: Optional[str] = None) -> dict:
+        return _entry(str(uuid.uuid4()), _named(doc), stamp or _iso(self._now()))
+
+    def create(self, doc: LabelDoc) -> dict:
+        def change():
+            entry = self._new_entry(doc)
+            self._labels.insert(0, entry)
+            return entry
+        return self._mutate(change)
+
+    def update(self, label_id: str, doc: LabelDoc) -> dict:
+        """Replace a label's design in place: same id, new ``updated_at`` (R14, R25)."""
+        def change():
+            entry = self._find(label_id)
+            entry.update({k: v for k, v in _named(doc).to_json().items() if k in DESIGN_FIELDS})
+            entry.pop('migrated', None)  # the new design passed the normal caps
+            entry['updated_at'] = _iso(self._now())
+            return entry
+        return self._mutate(change)
+
+    def duplicate(self, label_id: str) -> dict:
+        """A new, unstarred, never-printed copy; the original is untouched (R14)."""
+        def change():
+            source = self._find(label_id)
+            stamp = _iso(self._now())
+            entry = copy.deepcopy(source)
+            entry.update(id=str(uuid.uuid4()), name=f"{source['name']} (copy)",
+                         starred=False, created_at=stamp,
+                         updated_at=stamp, last_printed_at=None, print_count=0)
+            self._labels.insert(self._labels.index(source), entry)
+            return entry
+        return self._mutate(change)
+
+    def set_star(self, label_id: str, starred: bool) -> dict:
+        def change():
+            entry = self._find(label_id)
+            entry['starred'] = bool(starred)
+            return entry
+        return self._mutate(change)
+
+    def delete(self, ids) -> int:
+        """Delete every label whose id is in ``ids``; returns how many went."""
+        wanted = set(ids)
+
+        def change():
+            before = len(self._labels)
+            self._labels = [l for l in self._labels if l['id'] not in wanted]
+            return before - len(self._labels)
+        return self._mutate(change)
+
+    def record_print(self, doc: LabelDoc, label_id: Optional[str] = None) -> dict:
+        """Bump the printed entry's ``last_printed_at`` and ``print_count`` (R16).
+
+        With ``label_id`` that entry is bumped. Without, the first entry whose
+        content (stock, orientation, blocks; ids and copies aside) equals ``doc``'s
+        is bumped, else ``doc`` is saved as a new entry.
+        """
+        def change():
+            stamp = _iso(self._now())
+            if label_id is not None:
+                entry = self._find(label_id)
+            else:
+                entry = self._content_match(content_key(doc))
+                if entry is None:
+                    entry = self._new_entry(doc, stamp)
+                    self._labels.insert(0, entry)
+                else:
+                    _adopt(entry, doc, stamp)
+            entry['last_printed_at'] = stamp
+            entry['print_count'] += 1
+            return entry
+        return self._mutate(change)
+
+
+def flat_fields(label: dict) -> dict:
+    """The v1 flat view (``text``, ``font_size`` px at 300 DPI, ``align``) of a label."""
+    texts = [b for b in label['blocks'] if b.get('type') == 'text']
+    first = texts[0] if texts else None
+    return {
+        'text': '\n'.join(b['text'] for b in texts),
+        'font_size': pt_to_px(first['font_size_pt'], 300) if first else DEFAULT_FONT_SIZE,
+        'align': first['align'] if first else 'center',
+    }

@@ -1,0 +1,122 @@
+schema_version: 2
+phase:
+  number: 3
+  title: 'Designer UI: live in-label preview with inline editing, history panel, UX;
+    remove legacy UI; docs'
+  tag: agentic
+  depends_on:
+  - 2
+  tracking_issue: null
+  acceptance:
+  - ldx-live-preview
+  - ldx-history-panel
+  - ldx-ux
+  - ldx-single-ui
+  - ldx-acceptance-doc
+  - ldx-label-name
+  tier: standard
+  files:
+  - cups_dymo_label_printer/templates/index.html
+  - cups_dymo_label_printer/static/**
+  - cups_dymo_label_printer/web_app.py
+  - web_app/**
+  - Acceptance_Tests.md
+  - README.md
+  - tests/**
+  - scripts/**
+  estimate_lines: 1800
+tasks:
+- number: 1
+  title: Static assets + page shell
+  steps:
+  - id: P3.T1.S1
+    text: |-
+      RED: route test — GET / returns HTML referencing `/static/vendor/alpine.min.js`, `/static/app.js`, `/static/app.css`; GET of each returns 200; the page HTML contains no `http://`/`https://` script or stylesheet URL. Expected FAIL.
+  - id: P3.T1.S2
+    text: |-
+      GREEN: vendor Alpine.js 3.14.1 (`npm pack alpinejs@3.14.1`, copy `dist/cdn.min.js` → `static/vendor/alpine.min.js` with its LICENSE); new `templates/index.html` shell (toolbar: name field, stock select, orientation toggle, copies stepper 1–99, Save, Print, printer badge, theme toggle; canvas; inspector; history panel), `static/app.css` with light/dark tokens (`prefers-color-scheme` + `[data-theme]`), responsive at 360 px. Tests PASS.
+- number: 2
+  title: Editor state + debounced live render inside the label frame (R9)
+  steps:
+  - id: P3.T2.S1
+    text: |-
+      `static/app.js` Alpine component: doc state, add text/image block, inspector (family from /fonts with unsupported B/I disabled, size, B/I/U, align, shrink-to-fit, image mono + threshold, icon picker from /icons, upload to /images), debounced (250 ms) POST /render, label frame with CSS aspect-ratio from `width_mm/height_mm`, outline + rounded corners, overflow/missing outlines from `blocks`. Verify by launching `python -m cups_dymo_label_printer.web_app` with `LABEL_MEMORY_FILE`/`LABEL_IMAGE_DIR` in a scratch dir and the fake cups (a `scripts/dev_server.py` that installs the conftest fake and runs the app).
+- number: 3
+  title: On-label editing (R10)
+  steps:
+  - id: P3.T3.S1
+    text: |-
+      Overlays per block from `bbox_mm`: selecting a text overlay (pointerdown) opens a `<textarea>` over the box (Esc cancels, blur/Ctrl+Enter-inside commits, \n newlines); pointer-drag moves (mm delta = px delta ÷ px-per-mm, clamped so the block keeps ≥ 1 mm on the label); image corner handle scales (clamped 2 mm … label width); arrow keys nudge 0.5 mm when a block is selected and no textarea is focused. Each change triggers the debounced render.
+- number: 4
+  title: History panel (R17, R25 UI)
+  steps:
+  - id: P3.T4.S1
+    text: |-
+      Collapsible panel calling /labels: search (debounced), sort select, Starred-only, select-all, Delete selected, per row thumbnail `/labels/<id>/thumbnail.png?v=<updated_at>`, name, last printed, star toggle, Open (fills editor incl. orientation, name; editor shows 'Editing: <name>' + unsaved marker), Duplicate, Re-print (POST /labels/<id>/print). Save = PUT when editing an entry else POST; Print sends `{doc, id?, copies}`.
+- number: 5
+  title: 'UX: shortcuts, status, toasts, remembered settings (R18–R20)'
+  steps:
+  - id: P3.T5.S1
+    text: |-
+      Ctrl/⌘+Enter → print, Ctrl/⌘+P → `preventDefault` + immediate render; status badge polling /status every 15 s (ok/idle vs error); toasts for print success/failure/warning; `localStorage` (try/catch) for last stock, font, orientation, theme.
+  - id: P3.T5.S2
+    text: |-
+      Browser check (visual rows ldx-live-preview, ldx-history-panel, ldx-ux): drive the dev server in a real browser, capture every named state and interaction into a git-ignored `scripts/tmp/visual/` dir, open every screenshot, fill the step record's `visual:` section. Fix what the shots show.
+- number: 6
+  title: Remove legacy UI + docs (R21, R24)
+  steps:
+  - id: P3.T6.S1
+    text: |-
+      RED: test asserting `web_app/` does not exist at repo root. GREEN: `git rm -r web_app/`. README: one UI, new env vars (`LABEL_FONT_DIRS`, `LABEL_IMAGE_DIR`, `LABEL_MAX_UPLOAD_MB`), screenshots optional.
+  - id: P3.T6.S2
+    text: |-
+      Acceptance_Tests.md: add sections Fonts, Images, Live preview, Orientation, History, Stars, General UX (Given/When/Then, matching the shipped behaviour) and rewrite the three Saved-labels scenarios per the spec's Testing table; `markdownlint '**/*.md'` (markdownlint-cli 0.50.0) → no errors.
+  - id: P3.T6.S3
+    text: |-
+      Run the full suite into a log after the last code commit: `uv run --no-project --with flask --with pillow --with cairosvg --with pytest --with pytest-cov --with pytest-mock python -m pytest > $TMPDIR/p3-suite.log 2>&1` → all pass.
+state:
+  steps:
+    P3.T1.S1:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+    P3.T1.S2:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+    P3.T2.S1:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+    P3.T3.S1:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+    P3.T4.S1:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+    P3.T5.S1:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+    P3.T5.S2:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+    P3.T6.S1:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+    P3.T6.S2:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+    P3.T6.S3:
+      state: x
+      ticked_at: '2026-11-01T20:36:15+00:00'
+      note: null
+  completion:
+    at: '2026-11-01T20:36:15+00:00'
+    note: null
+    observed_prs: []

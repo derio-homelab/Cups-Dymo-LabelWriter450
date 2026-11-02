@@ -58,6 +58,10 @@ RUN apt-get clean && apt-get update && apt-get install -y \
     python3-venv \
     python3-pil \
     python3-cups \
+    python3-cairosvg \
+    fonts-dejavu-core \
+    fonts-liberation \
+    fonts-noto-core \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

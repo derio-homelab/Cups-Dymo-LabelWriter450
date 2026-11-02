@@ -10,6 +10,7 @@ packages = [{include = "cups_dymo_label_printer"}]
 python = "^3.9"
 flask = "^2.3.3"
 pillow = "^10.0.0"
+cairosvg = "^2.7.0"
 # Note: python-cups is not available via pip/poetry on all platforms
 # It will be installed via apt in the Docker container
 
@@ -20,6 +21,7 @@ pytest-mock = "^3.11.1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
