@@ -373,3 +373,10 @@ Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 30252 landscape, te
 Step: Same design in portrait → print; matches the preview.
 
 Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 30252 portrait, text[22pt, 14pt], printed x3; paper matched the preview (operator, 2026-11-02)
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-4 created=2026-11-02T06:40:29+00:00 -->
+### test-plan-step-4 · discovery · Test Plan step 4: ran
+
+Step: 11354 Multipurpose, landscape and portrait → print each; both match their previews.
+
+Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 11354 landscape, text[22pt, 14pt], printed x5 | label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 11354 portrait, text[22pt, 14pt], printed x6; operator: in landscape, bottom right was cut off; paper matched the preview (operator, 2026-11-02)
