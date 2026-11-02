@@ -352,3 +352,45 @@ run_kind: none
 ### sr-14-resolved-2 · finding [deferred → https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/4] · resolves sr-14: No volume for saved_labels.json/images; rebuild-redeploy drops history
 
 Filed at deliver as https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/4.
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-1 created=2026-11-02T05:39:12+00:00 -->
+### test-plan-step-1 · discovery · Test Plan step 1: ran
+
+Step: Deploy the image (`docker compose up --build -d`); open `:5000`.
+
+Evidence: GET /labels, /fonts, /icons 200 on http://192.168.10.34:5000; printer 3 usb://DYMO/LabelWriter%20450?serial=18012409565683 none; paper matched the preview (operator, 2026-11-02)
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-2 created=2026-11-02T06:33:21+00:00 -->
+### test-plan-step-2 · discovery · Test Plan step 2: ran
+
+Step: 30252 Address, landscape, two text blocks of different sizes → print; the printed label matches the preview (text runs along the 89 mm edge, same way up as on screen).
+
+Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 30252 landscape, text[22pt, 14pt], printed x2; operator: 99010 (EU equivalent of 30252, same 28×89 mm); paper matched the preview (operator, 2026-11-02)
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-3 created=2026-11-02T06:34:02+00:00 -->
+### test-plan-step-3 · discovery · Test Plan step 3: ran
+
+Step: Same design in portrait → print; matches the preview.
+
+Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 30252 portrait, text[22pt, 14pt], printed x3; paper matched the preview (operator, 2026-11-02)
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-4 created=2026-11-02T06:40:29+00:00 -->
+### test-plan-step-4 · discovery · Test Plan step 4: ran
+
+Step: 11354 Multipurpose, landscape and portrait → print each; both match their previews.
+
+Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 11354 landscape, text[22pt, 14pt], printed x5 | label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 11354 portrait, text[22pt, 14pt], printed x6; operator: in landscape, bottom right was cut off; paper matched the preview (operator, 2026-11-02)
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-5 created=2026-11-02T06:45:38+00:00 -->
+### test-plan-step-5 · discovery · Test Plan step 5: ran
+
+Step: Add an uploaded photo with `dither` and an icon with `threshold` → print; both are legible and match the preview.
+
+Evidence: auto-check did not confirm: no printed label with an upload:* image in dither AND an icon:* in threshold since 2026-11-02T06:40:30.000Z; operator: Threshold 128 looks better than dither; paper matched the preview (operator, 2026-11-02)
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-6 created=2026-11-02T06:48:54+00:00 -->
+### test-plan-step-6 · discovery · Test Plan step 6: ran
+
+Step: Restart the container; the history still lists the labels with their images and orientation; Re-print one from history.
+
+Evidence: operator restarted the container; all 4 labels back after restart (1 with images, orientations ['landscape', 'portrait']); thumbnails + uploaded images served | re-print bumped label a7b15eae-703a-498f-b0b1-5ec9c4fd7340 'τυπώνουμε': 11354 landscape, text[16.8pt], printed x1 (no duplicate created); paper matched the preview (operator, 2026-11-02)

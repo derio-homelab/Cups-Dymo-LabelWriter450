@@ -39,10 +39,10 @@ rows:
       bold/italic/underline, with multi-line text laid out line by line; unsupported
       styles fall back to the nearest available one.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R1
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R2
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R3
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R4
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R1
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R2
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R3
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R4
     levels:
       unit:
       - Cups-Dymo-LabelWriter450:tests/test_fonts.py
@@ -57,9 +57,9 @@ rows:
       and scaled, converted to pure black-and-white by threshold or dithering; oversize
       or wrong-type uploads are refused and stored images survive restarts.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R5
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R6
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R7
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R5
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R6
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R7
     levels:
       unit:
       - Cups-Dymo-LabelWriter450:tests/test_images.py
@@ -73,20 +73,31 @@ rows:
     acceptance: Thresholded and dithered images print legibly on thermal paper and match
       the preview.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R7
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R7
     levels: {}
-    status: not-implemented
-    notes: ''
+    status: walked
+    notes: 'Walked live by the operator on the real LabelWriter 450 (tengwar) during
+      run 2026-11-01-feat-label-designer-ux closeout, via the tester-gate script (Test
+      Plan step 5): uploaded photo (dither) + icon (threshold) printed legibly and matched
+      the preview. PR #3 gate:tester-passed.'
     verify: live
+    walks:
+    - strategy: live
+      harness: claude-code
+      model: operator
+      outcome: pass
+      at: '2026-11-02T07:45:39+01:00'
+      evidence: Test Plan step 5 ran (journal test-plan-step-5 in docs/superpowers/journals/specs/2026-11-01-label-designer-ux.md);
+        operator judged legibility on paper
   - id: ldx-live-preview
     capability: label-preview
     acceptance: The designer shows the server-rendered label inside a frame of the stock's
       real shape with outline and rounded corners, updating as the user types or edits
       on the label itself.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R8
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R9
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R10
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R8
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R9
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R10
     levels:
       api:
       - Cups-Dymo-LabelWriter450:tests/test_ui_assets.py
@@ -117,7 +128,7 @@ rows:
       the print image is rotated to the stock's media, and the orientation is saved
       and restored.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R11
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R11
     levels:
       unit:
       - Cups-Dymo-LabelWriter450:tests/test_printer_service.py
@@ -130,22 +141,33 @@ rows:
     acceptance: A label printed on 30252 Address and 11354 Multipurpose stock in either
       orientation comes out matching its preview.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R11
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R11
     levels: {}
-    status: not-implemented
-    notes: ''
+    status: walked
+    notes: 'Walked live by the operator on the real LabelWriter 450 (tengwar) during
+      run 2026-11-01-feat-label-designer-ux closeout, via the tester-gate script (Test
+      Plan steps 2-4): 30252 geometry (on 99010 stock, same 28x89 mm) and 11354, both
+      orientations, prints matched previews. PR #3 gate:tester-passed.'
     verify: live
+    walks:
+    - strategy: live
+      harness: claude-code
+      model: operator
+      outcome: pass
+      at: '2026-11-02T07:40:30+01:00'
+      evidence: Test Plan steps 2-4 ran (journal test-plan-step-2..4 in docs/superpowers/journals/specs/2026-11-01-label-designer-ux.md);
+        operator judged paper vs preview
   - id: ldx-history-model
     capability: label-history
     acceptance: Saved labels carry timestamps, print count, stars and blocks; editing
       keeps the id, Duplicate creates a new one, starred labels sort first, re-printing
       bumps last-printed, and an old saved_labels.json migrates to centred text blocks.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R12
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R13
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R14
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R15
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R16
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R12
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R13
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R14
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R15
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R16
     levels:
       unit:
       - Cups-Dymo-LabelWriter450:tests/test_store.py
@@ -160,7 +182,7 @@ rows:
       a Starred-only filter, star toggle, Open, Duplicate, Re-print, per-label checkboxes,
       select-all and bulk Delete.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R17
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R17
     levels:
       api:
       - Cups-Dymo-LabelWriter450:tests/test_ui_assets.py
@@ -192,7 +214,7 @@ rows:
     acceptance: A saved label can be named and renamed in the editor; an unnamed label
       takes its first text line as its name.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R25
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R25
     levels:
       unit:
       - Cups-Dymo-LabelWriter450:tests/test_store.py
@@ -210,9 +232,9 @@ rows:
       360px and in dark mode, has a copies stepper and remembers the last stock, font
       and orientation.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R18
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R19
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R20
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R18
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R19
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R20
     levels:
       api:
       - Cups-Dymo-LabelWriter450:tests/test_ui_assets.py
@@ -240,7 +262,7 @@ rows:
     capability: label-ux
     acceptance: 'Only one web UI ships: the legacy web_app/ copy is gone.'
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R21
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R21
     levels:
       unit:
       - Cups-Dymo-LabelWriter450:tests/test_ui_assets.py
@@ -251,8 +273,8 @@ rows:
     acceptance: The Docker image installs the curated fonts and the SVG rasterizer and
       builds green in CI, and CI runs the test suite on every push.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R22
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R23
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R22
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R23
     levels:
       int:
       - Cups-Dymo-LabelWriter450:.github/workflows/Tests.yaml
@@ -264,7 +286,7 @@ rows:
     acceptance: Acceptance_Tests.md describes fonts, images, preview, orientation, history,
       stars and general UX scenarios.
     origin:
-    - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R24
+    - Cups-Dymo-LabelWriter450:docs/superpowers/implemented/specs/2026-11-01-label-designer-ux-design.md#R24
     levels:
       unit:
       - Cups-Dymo-LabelWriter450:Acceptance_Tests.md
