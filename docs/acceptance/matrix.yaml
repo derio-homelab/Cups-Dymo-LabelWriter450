@@ -132,9 +132,20 @@ rows:
     origin:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R11
     levels: {}
-    status: not-implemented
-    notes: ''
+    status: walked
+    notes: 'Walked live by the operator on the real LabelWriter 450 (tengwar) during
+      run 2026-11-01-feat-label-designer-ux closeout, via the tester-gate script (Test
+      Plan steps 2-4): 30252 geometry (on 99010 stock, same 28x89 mm) and 11354, both
+      orientations, prints matched previews. PR #3 gate:tester-passed.'
     verify: live
+    walks:
+    - strategy: live
+      harness: claude-code
+      model: operator
+      outcome: pass
+      at: '2026-11-02T07:40:30+01:00'
+      evidence: Test Plan steps 2-4 ran (journal test-plan-step-2..4 in docs/superpowers/journals/specs/2026-11-01-label-designer-ux.md);
+        operator judged paper vs preview
   - id: ldx-history-model
     capability: label-history
     acceptance: Saved labels carry timestamps, print count, stars and blocks; editing
