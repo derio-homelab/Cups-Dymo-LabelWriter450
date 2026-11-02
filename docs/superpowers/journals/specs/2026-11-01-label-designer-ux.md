@@ -359,3 +359,10 @@ Filed at deliver as https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/is
 Step: Deploy the image (`docker compose up --build -d`); open `:5000`.
 
 Evidence: GET /labels, /fonts, /icons 200 on http://192.168.10.34:5000; printer 3 usb://DYMO/LabelWriter%20450?serial=18012409565683 none; paper matched the preview (operator, 2026-11-02)
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-2 created=2026-11-02T06:33:21+00:00 -->
+### test-plan-step-2 · discovery · Test Plan step 2: ran
+
+Step: 30252 Address, landscape, two text blocks of different sizes → print; the printed label matches the preview (text runs along the 89 mm edge, same way up as on screen).
+
+Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 30252 landscape, text[22pt, 14pt], printed x2; operator: 99010 (EU equivalent of 30252, same 28×89 mm); paper matched the preview (operator, 2026-11-02)
