@@ -352,3 +352,10 @@ run_kind: none
 ### sr-14-resolved-2 · finding [deferred → https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/4] · resolves sr-14: No volume for saved_labels.json/images; rebuild-redeploy drops history
 
 Filed at deliver as https://github.com/derio-homelab/Cups-Dymo-LabelWriter450/issues/4.
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-1 created=2026-11-02T05:39:12+00:00 -->
+### test-plan-step-1 · discovery · Test Plan step 1: ran
+
+Step: Deploy the image (`docker compose up --build -d`); open `:5000`.
+
+Evidence: GET /labels, /fonts, /icons 200 on http://192.168.10.34:5000; printer 3 usb://DYMO/LabelWriter%20450?serial=18012409565683 none; paper matched the preview (operator, 2026-11-02)
