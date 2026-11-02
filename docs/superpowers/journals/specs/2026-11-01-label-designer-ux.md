@@ -387,3 +387,10 @@ Evidence: label 05cde009-5cad-4081-95d5-cf7b4fb525e4 'Text': 11354 landscape, te
 Step: Add an uploaded photo with `dither` and an icon with `threshold` → print; both are legible and match the preview.
 
 Evidence: auto-check did not confirm: no printed label with an upload:* image in dither AND an icon:* in threshold since 2026-11-02T06:40:30.000Z; operator: Threshold 128 looks better than dither; paper matched the preview (operator, 2026-11-02)
+
+<!-- fr:journal kind=discovery scope=spec id=test-plan-step-6 created=2026-11-02T06:48:54+00:00 -->
+### test-plan-step-6 · discovery · Test Plan step 6: ran
+
+Step: Restart the container; the history still lists the labels with their images and orientation; Re-print one from history.
+
+Evidence: operator restarted the container; all 4 labels back after restart (1 with images, orientations ['landscape', 'portrait']); thumbnails + uploaded images served | re-print bumped label a7b15eae-703a-498f-b0b1-5ec9c4fd7340 'τυπώνουμε': 11354 landscape, text[16.8pt], printed x1 (no duplicate created); paper matched the preview (operator, 2026-11-02)
