@@ -75,9 +75,20 @@ rows:
     origin:
     - Cups-Dymo-LabelWriter450:docs/superpowers/specs/2026-11-01-label-designer-ux-design.md#R7
     levels: {}
-    status: not-implemented
-    notes: ''
+    status: walked
+    notes: 'Walked live by the operator on the real LabelWriter 450 (tengwar) during
+      run 2026-11-01-feat-label-designer-ux closeout, via the tester-gate script (Test
+      Plan step 5): uploaded photo (dither) + icon (threshold) printed legibly and matched
+      the preview. PR #3 gate:tester-passed.'
     verify: live
+    walks:
+    - strategy: live
+      harness: claude-code
+      model: operator
+      outcome: pass
+      at: '2026-11-02T07:45:39+01:00'
+      evidence: Test Plan step 5 ran (journal test-plan-step-5 in docs/superpowers/journals/specs/2026-11-01-label-designer-ux.md);
+        operator judged legibility on paper
   - id: ldx-live-preview
     capability: label-preview
     acceptance: The designer shows the server-rendered label inside a frame of the stock's
